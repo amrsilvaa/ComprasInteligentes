@@ -75,15 +75,16 @@ def buscar_dados_estoque_vendas():
                   AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
                 GROUP BY i.CODPROD
             ),
-            EstoqueTotal AS (
-                SELECT 
-                    CODPROD,
-                    ISNULL(SUM(ESTOQUE - RESERVADO), 0) AS ESTOQUE,
-                    ISNULL(MAX(ESTMIN), 0) AS ESTMIN
-                FROM TGFEST WITH (NOLOCK)
-                WHERE CODEMP = 1
-                GROUP BY CODPROD
-            ),
+          EstoqueTotal AS (
+    SELECT 
+        CODPROD,
+        ISNULL(SUM(ESTOQUE - RESERVADO), 0) AS ESTOQUE,
+        ISNULL(MAX(ESTMIN), 0) AS ESTMIN
+    FROM TGFEST WITH (NOLOCK)
+    WHERE CODEMP = 1 
+      AND CODLOCAL <> 0  -- Ignora o estoque do Local 0 (Remessas / Fiscal)
+    GROUP BY CODPROD
+),
             UltimoCusto AS (
                 SELECT 
                     CODPROD,
