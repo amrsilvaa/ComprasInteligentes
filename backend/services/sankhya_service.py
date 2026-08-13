@@ -71,6 +71,7 @@ class SankhyaAPIService:
 
         query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
 
+        # Consulta SQL simplificada e abrangente
         sql_query = """
         WITH Vendas15D AS (
             SELECT 
@@ -78,12 +79,8 @@ class SankhyaAPIService:
                 SUM(ITE.QTDNEG) AS QTD_VENDIDA_15D
             FROM TGFCAB CAB
             INNER JOIN TGFITE ITE ON CAB.NUNOTA = ITE.NUNOTA
-            INNER JOIN TGFTOP TPO ON CAB.CODTIPOPER = TPO.CODTIPOPER AND CAB.DHTIPOPER = TPO.DHALTER
             WHERE CAB.DTNEG >= DATEADD(day, -15, CAST(GETDATE() AS DATE))
               AND CAB.STATUSNOTA = 'L'
-              AND TPO.BONIFICACAO = 'N'
-              AND TPO.DTPRESO = 'N'
-              AND TPO.ATUALEST = 'B'
             GROUP BY ITE.CODPROD
         ),
         VendasMesAnt AS (
@@ -92,35 +89,38 @@ class SankhyaAPIService:
                 SUM(ITE.QTDNEG) AS QTD_VENDIDA_MES_ANT
             FROM TGFCAB CAB
             INNER JOIN TGFITE ITE ON CAB.NUNOTA = ITE.NUNOTA
-            INNER JOIN TGFTOP TPO ON CAB.CODTIPOPER = TPO.CODTIPOPER AND CAB.DHTIPOPER = TPO.DHALTER
             WHERE CAB.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
               AND CAB.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
               AND CAB.STATUSNOTA = 'L'
-              AND TPO.BONIFICACAO = 'N'
-              AND TPO.DTPRESO = 'N'
-              AND TPO.ATUALEST = 'B'
             GROUP BY ITE.CODPROD
+        ),
+        EstoqueSum AS (
+            SELECT 
+                CODPROD,
+                SUM(ESTOQUE) AS ESTOQUE_ATUAL,
+                MAX(ESTMIN) AS ESTOQUE_MINIMO
+            FROM TGFEST
+            GROUP BY CODPROD
         )
         SELECT 
             PRO.CODPROD,
             PRO.DESCRPROD,
             PRO.CODVOL AS UNIDADEMEDIDA,
-            ISNULL(EST.ESTOQUE, 0) AS ESTOQUE_ATUAL,
-            ISNULL(EST.ESTMIN, 0) AS ESTOQUE_MINIMO,
+            ISNULL(EST.ESTOQUE_ATUAL, 0) AS ESTOQUE_ATUAL,
+            ISNULL(EST.ESTOQUE_MINIMO, 0) AS ESTOQUE_MINIMO,
             ISNULL(V15.QTD_VENDIDA_15D, 0) AS VENDAS_15D,
             ISNULL(VMA.QTD_VENDIDA_MES_ANT, 0) AS VENDAS_MES_ANTERIOR,
             ISNULL(CUS.CUSSEMICMS, 0) AS CUSTO_UNITARIO,
             ISNULL(EXC.VLRVENDA, 0) AS PRECO_VENDA
         FROM TGFPRO PRO
-        LEFT JOIN TGFEST EST ON PRO.CODPROD = EST.CODPROD AND EST.CODEMP = 1 AND EST.CODLOCAL = 0
+        LEFT JOIN EstoqueSum EST ON PRO.CODPROD = EST.CODPROD
         LEFT JOIN Vendas15D V15 ON PRO.CODPROD = V15.CODPROD
         LEFT JOIN VendasMesAnt VMA ON PRO.CODPROD = VMA.CODPROD
-        LEFT JOIN TGFCUS CUS ON PRO.CODPROD = CUS.CODPROD AND CUS.CODEMP = 1 AND CUS.DTATUAL = (
-            SELECT MAX(DTATUAL) FROM TGFCUS WHERE CODPROD = PRO.CODPROD AND CODEMP = 1
+        LEFT JOIN TGFCUS CUS ON PRO.CODPROD = CUS.CODPROD AND CUS.DTATUAL = (
+            SELECT MAX(DTATUAL) FROM TGFCUS WHERE CODPROD = PRO.CODPROD
         )
         LEFT JOIN TGFEXC EXC ON PRO.CODPROD = EXC.CODPROD AND EXC.NUTAB = 1
         WHERE PRO.ATIVO = 'S'
-          AND (ISNULL(EST.ESTOQUE, 0) > 0 OR ISNULL(V15.QTD_VENDIDA_15D, 0) > 0)
         ORDER BY PRO.DESCRPROD
         """
 
@@ -150,7 +150,12 @@ class SankhyaAPIService:
                 values = row.get("localFields", {}).get("localField", [])
                 item = {}
                 for idx, field_name in enumerate(fields):
-                    item[field_name] = values[idx].get("$") if idx < len(values) else None
+                    val = values[idx].get("$") if idx < len(values) else None
+                    # Mapeia em caixa alta e caixa baixa para garantir compatibilidade com o frontend
+                    key_upper = field_name.upper()
+                    key_lower = field_name.lower()
+                    item[key_upper] = val
+                    item[key_lower] = val
                 produtos.append(item)
 
             return produtos
