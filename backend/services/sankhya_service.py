@@ -4,20 +4,20 @@ from typing import List, Dict, Any
 import sys
 import os
 
-# Adiciona o diretório 'backend' e o diretório raiz ao sys.path
+# Adiciona a pasta backend e a raiz do projeto no sys.path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # pasta backend
-ROOT_DIR = os.path.dirname(BASE_DIR)                                   # pasta raiz
+ROOT_DIR = os.path.dirname(BASE_DIR)                                   # raiz do repo
 
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
-if ROOT_DIR not in sys.path:
-    sys.path.insert(0, ROOT_DIR)
+for path in [BASE_DIR, ROOT_DIR]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
+# Importação blindada para rodar localmente ou no Render
 try:
-    import config  # type: ignore
+    import backend.config as config  # type: ignore
     settings = config.settings
 except ModuleNotFoundError:
-    from backend import config  # type: ignore
+    import config  # type: ignore
     settings = config.settings
 
 logger = logging.getLogger(__name__)
