@@ -164,16 +164,3 @@ def buscar_dados_estoque_vendas():
     except Exception as e:
         print(f"[ERRO SANKHYA_SERVICE]: {str(e)}")
         return []
-```
-
----
-
-### Executar no Terminal:
-
-```bash
-git add .
-git commit -m "Fix de performance: Usa JOIN direto em NUTAB 604 com calculo por KG"
-git push origin main
-```
-
-Após executar os comandos e aguardar a publicação no Render, basta atualizar a página (`Shift + F5`).
