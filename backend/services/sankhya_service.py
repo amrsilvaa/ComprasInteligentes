@@ -81,7 +81,6 @@ class SankhyaAPIService:
             INNER JOIN TGFTOP TPO ON CAB.CODTIPOPER = TPO.CODTIPOPER AND CAB.DHTIPOPER = TPO.DHALTER
             WHERE CAB.DTNEG >= DATEADD(day, -15, CAST(GETDATE() AS DATE))
               AND CAB.STATUSNOTA = 'L'
-              AND TPO.GHOST = 'N'
               AND TPO.BONIFICACAO = 'N'
               AND TPO.DTPRESO = 'N'
               AND TPO.ATUALEST = 'B'
@@ -97,7 +96,6 @@ class SankhyaAPIService:
             WHERE CAB.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
               AND CAB.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
               AND CAB.STATUSNOTA = 'L'
-              AND TPO.GHOST = 'N'
               AND TPO.BONIFICACAO = 'N'
               AND TPO.DTPRESO = 'N'
               AND TPO.ATUALEST = 'B'
