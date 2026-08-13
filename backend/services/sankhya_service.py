@@ -1,12 +1,7 @@
 import pyodbc
 import logging
 from typing import List, Dict, Any
-import sys
-import os
-
-# Ajusta o path para importar as configurações da aplicação
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import settings
+from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +14,6 @@ class SankhyaService:
         self.password = settings.SANKHYA_PASSWORD
 
     def _get_connection(self):
-        # Conexão Nativa SQL Server
         conn_str = (
             f"DRIVER={{ODBC Driver 17 for SQL Server}};"
             f"SERVER={self.host},{self.port};"
