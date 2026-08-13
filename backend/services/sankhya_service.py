@@ -44,7 +44,7 @@ def autenticar_sankhya():
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta saldo real, vendas 15d, vendas mês ant., custo e preço de venda."""
+    """Consulta saldo real, vendas 15d e vendas mês ant. (versão ultra leve)."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
@@ -74,20 +74,6 @@ def buscar_dados_estoque_vendas():
                   AND c.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
                   AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
                 GROUP BY i.CODPROD
-            ),
-            UltimoCusto AS (
-                SELECT 
-                    CODPROD, 
-                    ISNULL(CUSTOCOM, ISNULL(CUSTOSEMICM, 0)) AS CUSTO
-                FROM TGFCUS c1
-                WHERE DTATUAL = (SELECT MAX(DTATUAL) FROM TGFCUS WHERE CODPROD = c1.CODPROD)
-            ),
-            UltimoPreco AS (
-                SELECT 
-                    CODPROD, 
-                    VLRVENDA
-                FROM TGFEXC e1
-                WHERE DTVIG = (SELECT MAX(DTVIG) FROM TGFEXC WHERE CODPROD = e1.CODPROD)
             )
             SELECT 
                 p.CODPROD, 
@@ -107,14 +93,12 @@ def buscar_dados_estoque_vendas():
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA,
                 ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
-                ISNULL(MAX(uc.CUSTO), 0) AS CUSTO,
-                ISNULL(MAX(up.VLRVENDA), 0) AS PRECO_VENDA
+                0 AS CUSTO,
+                0 AS PRECO_VENDA
             FROM TGFPRO p
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
-            LEFT JOIN UltimoCusto uc ON p.CODPROD = uc.CODPROD
-            LEFT JOIN UltimoPreco up ON p.CODPROD = up.CODPROD
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
             GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
