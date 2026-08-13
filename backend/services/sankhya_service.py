@@ -1,7 +1,17 @@
 import pyodbc
 import logging
 from typing import List, Dict, Any
-from backend.config import settings
+import sys
+import os
+
+# Ajusta o PYTHONPATH para localizar os módulos locais
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+try:
+    from backend.config import settings
+except ImportError:
+    from config import settings
 
 logger = logging.getLogger(__name__)
 
