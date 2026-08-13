@@ -77,18 +77,17 @@ def buscar_dados_estoque_vendas():
             ),
 EstoqueTotal AS (
     SELECT 
-        e.CODPROD,
-        -- Se o estoque for fruto de remessa/reserva (TOP 226), desconsidera
-        ISNULL(SUM(
-            CASE 
-                WHEN e.RESERVADO >= e.ESTOQUE THEN 0 
-                ELSE (e.ESTOQUE - e.RESERVADO) 
-            END
-        ), 0) AS ESTOQUE,
+        m.CODPROD,
+        -- Soma as entradas e saídas desconsiderando a TOP 226 (Remessa)
+        ISNULL(SUM(m.QTDENTSAI), 0) AS ESTOQUE,
         ISNULL(MAX(e.ESTMIN), 0) AS ESTMIN
-    FROM TGFEST e WITH (NOLOCK)
-    WHERE e.CODEMP = 1
-    GROUP BY e.CODPROD
+    FROM TGFMCB m WITH (NOLOCK)
+    INNER JOIN TGFCAB c WITH (NOLOCK) ON c.NUNOTA = m.NUNOTA
+    LEFT JOIN TGFEST e WITH (NOLOCK) ON e.CODPROD = m.CODPROD AND e.CODEMP = m.CODEMP
+    WHERE m.CODEMP = 1
+      AND c.STATUSNOTA = 'L'             -- Apenas notas confirmadas/liberadas
+      AND c.CODTIPOPER NOT IN (226)      -- Ignora a TOP 226 de Remessa por Conta e Ordem
+    GROUP BY m.CODPROD
 ),
             UltimoCusto AS (
                 SELECT 
