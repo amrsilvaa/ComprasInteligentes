@@ -1,29 +1,31 @@
-import pyodbc
+import pymssql
 import logging
 from typing import List, Dict, Any
 
-# Importação relativa limpa que o Pylance resolve nativamente
-from ..config import settings
+try:
+    from backend.config import settings  # type: ignore
+except ImportError:
+    from config import settings  # type: ignore
 
 logger = logging.getLogger(__name__)
 
 class SankhyaService:
     def __init__(self):
         self.host = settings.SANKHYA_HOST
-        self.port = getattr(settings, 'SANKHYA_PORT', 1433)
+        self.port = int(getattr(settings, 'SANKHYA_PORT', 1433))
         self.database = settings.SANKHYA_SERVICE_NAME
         self.user = settings.SANKHYA_USER
         self.password = settings.SANKHYA_PASSWORD
 
     def _get_connection(self):
-        conn_str = (
-            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-            f"SERVER={self.host},{self.port};"
-            f"DATABASE={self.database};"
-            f"UID={self.user};"
-            f"PWD={self.password}"
+        return pymssql.connect(
+            server=self.host,
+            port=self.port,
+            user=self.user,
+            password=self.password,
+            database=self.database,
+            as_dict=True
         )
-        return pyodbc.connect(conn_str)
 
     def get_sugestao_compras(self) -> List[Dict[str, Any]]:
         query = """
@@ -92,15 +94,14 @@ class SankhyaService:
             cursor = conn.cursor()
             cursor.execute(query)
             
-            columns = [col[0].lower() for col in cursor.description]
             rows = cursor.fetchall()
-            
             result = []
+            
             for row in rows:
-                item = dict(zip(columns, row))
+                item = {k.lower(): v for k, v in row.items()}
                 
-                vendas_15d = item.get('vendas_15d', 0)
-                estoque = item.get('estoque', 0)
+                vendas_15d = item.get('vendas_15d', 0) or 0
+                estoque = item.get('estoque', 0) or 0
                 sugestao = max(0, vendas_15d - estoque)
                 
                 item['sugestao_compra'] = sugestao
