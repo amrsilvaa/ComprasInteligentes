@@ -44,7 +44,7 @@ def autenticar_sankhya():
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta rápida e segura de estoque, vendas e sugestão de compras."""
+    """Consulta saldo real, vendas 15d, vendas mês ant., custo e preço de venda (Tabela 0)."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
@@ -74,6 +74,14 @@ def buscar_dados_estoque_vendas():
                   AND c.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
                   AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
                 GROUP BY i.CODPROD
+            ),
+            CustoAtual AS (
+                SELECT 
+                    CODPROD,
+                    ISNULL(CUSTOCOM, ISNULL(CUSTOSEMICM, 0)) AS CUSTO,
+                    ROW_NUMBER() OVER (PARTITION BY CODPROD ORDER BY DTATUAL DESC) AS RN
+                FROM TGFCUS
+                WHERE CODEMP = 1
             )
             SELECT 
                 p.CODPROD, 
@@ -93,15 +101,17 @@ def buscar_dados_estoque_vendas():
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA,
                 ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
-                0 AS CUSTO,
-                0 AS PRECO_VENDA
+                ISNULL(c.CUSTO, 0) AS CUSTO,
+                ISNULL(MAX(prc.VLRVENDA), 0) AS PRECO_VENDA
             FROM TGFPRO p
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
+            LEFT JOIN CustoAtual c ON p.CODPROD = c.CODPROD AND c.RN = 1
+            LEFT JOIN TGFEXC prc ON p.CODPROD = prc.CODPROD AND prc.CODTAB = 0
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
-            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
+            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT, c.CUSTO
             ORDER BY SUGESTAO_COMPRA DESC, v15.VENDA_15 DESC, p.DESCRPROD ASC
         """
 
@@ -127,6 +137,7 @@ def buscar_dados_estoque_vendas():
                 })
             return produtos
 
+        print(f"[RESPOSTA SANKHYA SEM ROWS]: {data_dbexp}")
         return []
 
     except Exception as e:
