@@ -1,7 +1,7 @@
 import pymssql
 import logging
 from typing import List, Dict, Any
-from backend.config import settings
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
