@@ -4,18 +4,20 @@ from typing import List, Dict, Any
 import sys
 import os
 
-# Força o Python a enxergar a raiz e a pasta backend
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ROOT_DIR = os.path.dirname(BASE_DIR)
+# Adiciona o diretório 'backend' e o diretório raiz ao sys.path
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # pasta backend
+ROOT_DIR = os.path.dirname(BASE_DIR)                                   # pasta raiz
 
-for path in [BASE_DIR, ROOT_DIR]:
-    if path not in sys.path:
-        sys.path.insert(0, path)
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
 try:
-    from backend.config import settings  # type: ignore
-except ImportError:
     import config  # type: ignore
+    settings = config.settings
+except ModuleNotFoundError:
+    from backend import config  # type: ignore
     settings = config.settings
 
 logger = logging.getLogger(__name__)
