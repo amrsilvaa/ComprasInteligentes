@@ -74,13 +74,18 @@ def buscar_dados_estoque_vendas():
                   AND c.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
                   AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
                 GROUP BY i.CODPROD
+            ),
+            UltimoPreco AS (
+                SELECT CODPROD, VLRVENDA,
+                       ROW_NUMBER() OVER (PARTITION BY CODPROD ORDER BY DHALTREG DESC) as rn
+                FROM TGFEXC
             )
             SELECT 
                 p.CODPROD, 
                 p.DESCRPROD, 
                 ISNULL(p.CODVOL, 'UN') AS UNIDADE,
-                ISNULL(p.PESOLIQUIDO, 0) AS PESOLIQUIDO,
-                ISNULL(p.PESOBRUTO, 0) AS PESOBRUTO,
+                ISNULL(MAX(p.PESOLIQUIDO), 0) AS PESOLIQUIDO,
+                ISNULL(MAX(p.PESOBRUTO), 0) AS PESOBRUTO,
                 ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0) AS ESTOQUE,
                 ISNULL(MAX(e.ESTMIN), 0) AS ESTMIN,
                 ISNULL(v15.VENDA_15, 0) AS VENDA_15,
@@ -95,31 +100,18 @@ def buscar_dados_estoque_vendas():
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA,
                 ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
-                ISNULL((
-                    SELECT TOP 1 CUSREP 
-                    FROM TGFCUS 
-                    WHERE CODPROD = p.CODPROD AND CODEMP = 1 
-                    ORDER BY DTATUAL DESC
-                ), 0) AS CUSTO_REPOSICAO,
-                ISNULL((
-                    SELECT TOP 1 CUSGER 
-                    FROM TGFCUS 
-                    WHERE CODPROD = p.CODPROD AND CODEMP = 1 
-                    ORDER BY DTATUAL DESC
-                ), 0) AS CUSTO_GERENCIAL,
-                ISNULL((
-                    SELECT TOP 1 VLRVENDA 
-                    FROM TGFEXC 
-                    WHERE CODPROD = p.CODPROD 
-                    ORDER BY DHALTREG DESC
-                ), 0) AS PRECO_VENDA
+                ISNULL(MAX(c.CUSREP), 0) AS CUSTO_REPOSICAO,
+                ISNULL(MAX(c.CUSGER), 0) AS CUSTO_GERENCIAL,
+                ISNULL(MAX(prc.VLRVENDA), 0) AS PRECO_VENDA
             FROM TGFPRO p
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
+            LEFT JOIN TGFCUS c ON p.CODPROD = c.CODPROD AND c.CODEMP = 1
+            LEFT JOIN UltimoPreco prc ON p.CODPROD = prc.CODPROD AND prc.rn = 1
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
-            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, p.PESOLIQUIDO, p.PESOBRUTO, v15.VENDA_15, vma.VENDA_MES_ANT
+            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
             ORDER BY SUGESTAO_COMPRA DESC, v15.VENDA_15 DESC, p.DESCRPROD ASC
         """
 
@@ -144,7 +136,7 @@ def buscar_dados_estoque_vendas():
                 # Identifica o peso unitário da embalagem
                 peso_unitario = peso_liq if peso_liq > 0 else peso_bruto
 
-                # Se for vendido em caixa/fardo e tiver peso cadastrado, calcula o valor por KG
+                # Se for vendido em caixa/fardo/unidade e tiver peso cadastrado, calcula o valor por KG
                 if unidade != "KG" and peso_unitario > 0:
                     preco_kg = preco_venda / peso_unitario
                     custo_kg = custo_principal / peso_unitario
