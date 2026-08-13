@@ -1,26 +1,33 @@
-import cx_Oracle
+import pyodbc
 import logging
 from typing import List, Dict, Any
-from backend.config import settings
+import sys
+import os
+
+# Ajusta o path para importar as configurações da aplicação
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import settings
 
 logger = logging.getLogger(__name__)
 
 class SankhyaService:
     def __init__(self):
-        self.dsn = cx_Oracle.makedsn(
-            settings.SANKHYA_HOST,
-            settings.SANKHYA_PORT,
-            service_name=settings.SANKHYA_SERVICE_NAME
-        )
+        self.host = settings.SANKHYA_HOST
+        self.port = getattr(settings, 'SANKHYA_PORT', 1433)
+        self.database = settings.SANKHYA_SERVICE_NAME
         self.user = settings.SANKHYA_USER
         self.password = settings.SANKHYA_PASSWORD
 
     def _get_connection(self):
-        return cx_Oracle.connect(
-            user=self.user,
-            password=self.password,
-            dsn=self.dsn
+        # Conexão Nativa SQL Server
+        conn_str = (
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+            f"SERVER={self.host},{self.port};"
+            f"DATABASE={self.database};"
+            f"UID={self.user};"
+            f"PWD={self.password}"
         )
+        return pyodbc.connect(conn_str)
 
     def get_sugestao_compras(self) -> List[Dict[str, Any]]:
         query = """
