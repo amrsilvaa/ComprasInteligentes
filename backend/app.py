@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from services.sankhya_service import buscar_dados_estoque_vendas
+from backend.services.sankhya_service import buscar_dados_estoque_vendas
 
 app = FastAPI()
 
