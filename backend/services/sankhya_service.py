@@ -78,13 +78,13 @@ class SankhyaAPIService:
                 SUM(ITE.QTDNEG) AS QTD_VENDIDA_15D
             FROM TGFCAB CAB
             INNER JOIN TGFITE ITE ON CAB.NUNOTA = ITE.NUNOTA
-            INNER JOIN TGFTOP TOP ON CAB.CODTIPOPER = TOP.CODTIPOPER AND CAB.DHTIPOPER = TOP.DHALTER
+            INNER JOIN TGFTOP TPO ON CAB.CODTIPOPER = TPO.CODTIPOPER AND CAB.DHTIPOPER = TPO.DHALTER
             WHERE CAB.DTNEG >= DATEADD(day, -15, CAST(GETDATE() AS DATE))
               AND CAB.STATUSNOTA = 'L'
-              AND TOP.GHOST = 'N'
-              AND TOP.BONIFICACAO = 'N'
-              AND TOP.DTPRESO = 'N'
-              AND TOP.ATUALEST = 'B'
+              AND TPO.GHOST = 'N'
+              AND TPO.BONIFICACAO = 'N'
+              AND TPO.DTPRESO = 'N'
+              AND TPO.ATUALEST = 'B'
             GROUP BY ITE.CODPROD
         ),
         VendasMesAnt AS (
@@ -93,14 +93,14 @@ class SankhyaAPIService:
                 SUM(ITE.QTDNEG) AS QTD_VENDIDA_MES_ANT
             FROM TGFCAB CAB
             INNER JOIN TGFITE ITE ON CAB.NUNOTA = ITE.NUNOTA
-            INNER JOIN TGFTOP TOP ON CAB.CODTIPOPER = TOP.CODTIPOPER AND CAB.DHTIPOPER = TOP.DHALTER
+            INNER JOIN TGFTOP TPO ON CAB.CODTIPOPER = TPO.CODTIPOPER AND CAB.DHTIPOPER = TPO.DHALTER
             WHERE CAB.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
               AND CAB.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
               AND CAB.STATUSNOTA = 'L'
-              AND TOP.GHOST = 'N'
-              AND TOP.BONIFICACAO = 'N'
-              AND TOP.DTPRESO = 'N'
-              AND TOP.ATUALEST = 'B'
+              AND TPO.GHOST = 'N'
+              AND TPO.BONIFICACAO = 'N'
+              AND TPO.DTPRESO = 'N'
+              AND TPO.ATUALEST = 'B'
             GROUP BY ITE.CODPROD
         )
         SELECT 
