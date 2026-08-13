@@ -74,16 +74,6 @@ def buscar_dados_estoque_vendas():
                   AND c.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
                   AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
                 GROUP BY i.CODPROD
-            ),
-            UltimoCusto AS (
-                SELECT CODPROD, ISNULL(CUSTOCOM, CUSTOSEMICM) AS CUSTO,
-                       ROW_NUMBER() OVER (PARTITION BY CODPROD ORDER BY DTATUAL DESC) as rn
-                FROM TGFCUS
-            ),
-            UltimoPreco AS (
-                SELECT CODPROD, VLRVENDA,
-                       ROW_NUMBER() OVER (PARTITION BY CODPROD ORDER BY DTVIG DESC) as rn
-                FROM TGFEXC
             )
             SELECT 
                 p.CODPROD, 
@@ -103,17 +93,15 @@ def buscar_dados_estoque_vendas():
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA,
                 ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
-                ISNULL(c.CUSTO, 0) AS CUSTO,
-                ISNULL(pr.VLRVENDA, 0) AS PRECO_VENDA
+                ISNULL((SELECT TOP 1 ISNULL(CUSTOCOM, CUSTOSEMICM) FROM TGFCUS WHERE CODPROD = p.CODPROD ORDER BY DTATUAL DESC), 0) AS CUSTO,
+                ISNULL((SELECT TOP 1 VLRVENDA FROM TGFEXC WHERE CODPROD = p.CODPROD ORDER BY DTVIG DESC), 0) AS PRECO_VENDA
             FROM TGFPRO p
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
-            LEFT JOIN UltimoCusto c ON p.CODPROD = c.CODPROD AND c.rn = 1
-            LEFT JOIN UltimoPreco pr ON p.CODPROD = pr.CODPROD AND pr.rn = 1
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
-            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT, c.CUSTO, pr.VLRVENDA
+            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
             ORDER BY SUGESTAO_COMPRA DESC, v15.VENDA_15 DESC, p.DESCRPROD ASC
         """
 
