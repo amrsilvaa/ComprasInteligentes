@@ -44,14 +44,13 @@ def autenticar_sankhya():
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta saldo real e vendas dos últimos 15 dias para calcular a compra."""
+    """Consulta saldo real, vendas dos últimos 15 dias e vendas do mês anterior."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
 
         url_dbexp = f"{base_endpoint}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSessionHandle={jsessionid}"
         
-        # SQL com CTE para buscar histórico de vendas dos últimos 15 dias
         sql_query = """
             WITH Vendas15 AS (
                 SELECT 
@@ -63,6 +62,18 @@ def buscar_dados_estoque_vendas():
                   AND c.TIPMOV IN ('V', 'D')
                   AND c.DTNEG >= DATEADD(day, -15, GETDATE())
                 GROUP BY i.CODPROD
+            ),
+            VendasMesAnterior AS (
+                SELECT 
+                    i.CODPROD,
+                    ISNULL(SUM(CASE WHEN c.TIPMOV = 'V' THEN i.QTDNEG WHEN c.TIPMOV = 'D' THEN -i.QTDNEG ELSE 0 END), 0) AS VENDA_MES_ANT
+                FROM TGFITE i
+                INNER JOIN TGFCAB c ON c.NUNOTA = i.NUNOTA
+                WHERE c.STATUSNOTA = 'L'
+                  AND c.TIPMOV IN ('V', 'D')
+                  AND c.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
+                  AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
+                GROUP BY i.CODPROD
             )
             SELECT 
                 p.CODPROD, 
@@ -70,24 +81,26 @@ def buscar_dados_estoque_vendas():
                 ISNULL(p.CODVOL, 'UN') AS UNIDADE,
                 ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0) AS ESTOQUE,
                 ISNULL(MAX(e.ESTMIN), 0) AS ESTMIN,
-                ISNULL(v.VENDA_15, 0) AS VENDA_15,
+                ISNULL(v15.VENDA_15, 0) AS VENDA_15,
                 CASE 
                     WHEN ISNULL(MAX(e.ESTMIN), 0) > 0 THEN 
                         CASE WHEN (ISNULL(MAX(e.ESTMIN), 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0)) > 0 
                              THEN (ISNULL(MAX(e.ESTMIN), 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0))
                              ELSE 0 END
                     ELSE 
-                        CASE WHEN (ISNULL(v.VENDA_15, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0)) > 0 
-                             THEN (ISNULL(v.VENDA_15, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0))
+                        CASE WHEN (ISNULL(v15.VENDA_15, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0)) > 0 
+                             THEN (ISNULL(v15.VENDA_15, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0))
                              ELSE 0 END
-                END AS SUGESTAO_COMPRA
+                END AS SUGESTAO_COMPRA,
+                ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT
             FROM TGFPRO p
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
-            LEFT JOIN Vendas15 v ON p.CODPROD = v.CODPROD
+            LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
+            LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
-            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v.VENDA_15
-            ORDER BY SUGESTAO_COMPRA DESC, v.VENDA_15 DESC, p.DESCRPROD ASC
+            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
+            ORDER BY SUGESTAO_COMPRA DESC, v15.VENDA_15 DESC, p.DESCRPROD ASC
         """
 
         payload_dbexp = {"requestBody": {"sql": sql_query}}
@@ -104,8 +117,9 @@ def buscar_dados_estoque_vendas():
                     "unidade": linha[2] if len(linha) > 2 else "UN",
                     "estoque": float(linha[3]) if len(linha) > 3 and linha[3] is not None else 0.0,
                     "estoque_minimo": float(linha[4]) if len(linha) > 4 and linha[4] is not None else 0.0,
-                    "venda_30d": float(linha[5]) if len(linha) > 5 and linha[5] is not None else 0.0,
-                    "sugestao_compra": float(linha[6]) if len(linha) > 6 and linha[6] is not None else 0.0
+                    "venda_15d": float(linha[5]) if len(linha) > 5 and linha[5] is not None else 0.0,
+                    "sugestao_compra": float(linha[6]) if len(linha) > 6 and linha[6] is not None else 0.0,
+                    "venda_mes_anterior": float(linha[7]) if len(linha) > 7 and linha[7] is not None else 0.0
                 })
             return produtos
 

@@ -51,14 +51,15 @@ HTML_CONTENT = """
             <th class="p-3">Unid.</th>
             <th class="p-3 text-right sortable" onclick="ordenarPor('estoque')">Estoque ⇕</th>
             <th class="p-3 text-right sortable" onclick="ordenarPor('estoque_minimo')">Est. Mín. ⇕</th>
-            <th class="p-3 text-right sortable" onclick="ordenarPor('venda_30d')">Vendas (15d) ⇕</th>
+            <th class="p-3 text-right sortable" onclick="ordenarPor('venda_15d')">Vendas (15d) ⇕</th>
+            <th class="p-3 text-right sortable" onclick="ordenarPor('venda_mes_anterior')">Vendas (Mês Ant.) ⇕</th>
             <th class="p-3 text-right sortable" onclick="ordenarPor('sugestao_compra')">Sugestão Compra ⇕</th>
             <th class="p-3 text-center">Status</th>
           </tr>
         </thead>
         <tbody id="tableBody" class="divide-y divide-gray-200 text-sm">
           <tr>
-            <td colspan="8" class="p-6 text-center text-gray-500">Carregando dados do Sankhya...</td>
+            <td colspan="9" class="p-6 text-center text-gray-500">Carregando dados do Sankhya...</td>
           </tr>
         </tbody>
       </table>
@@ -83,10 +84,10 @@ HTML_CONTENT = """
           produtosFiltrados = [...todosProdutos];
           renderizarTabela(produtosFiltrados);
         } else {
-          tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-red-500 font-semibold">Erro ao carregar dados.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-red-500 font-semibold">Erro ao carregar dados.</td></tr>`;
         }
       } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-red-500 font-semibold">Falha de comunicação com o servidor.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-red-500 font-semibold">Falha de comunicação com o servidor.</td></tr>`;
       }
     }
 
@@ -115,7 +116,7 @@ HTML_CONTENT = """
       const tbody = document.getElementById('tableBody');
 
       if (produtos.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-gray-500">Nenhum produto encontrado.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-gray-500">Nenhum produto encontrado.</td></tr>`;
         return;
       }
 
@@ -125,8 +126,8 @@ HTML_CONTENT = """
           ? `<span class="bg-red-100 text-red-800 font-bold px-3 py-1 rounded-full text-xs">REPOR</span>`
           : `<span class="bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full text-xs">OK</span>`;
 
-        // Pega vendas 15d vindo do backend (com fallback caso venha via chave antiga)
-        const vendas15 = p.venda_15d ?? p.venda_30d ?? 0;
+        const vendas15 = p.venda_15d ?? 0;
+        const vendasMesAnt = p.venda_mes_anterior ?? 0;
 
         return `
           <tr class="hover:bg-blue-50 transition-colors ${precisaComprar ? 'bg-red-50/40' : ''}">
@@ -136,6 +137,7 @@ HTML_CONTENT = """
             <td class="p-3 text-right font-semibold text-gray-800">${(p.estoque || 0).toLocaleString('pt-BR')}</td>
             <td class="p-3 text-right text-gray-500">${(p.estoque_minimo || 0).toLocaleString('pt-BR')}</td>
             <td class="p-3 text-right font-semibold text-blue-600">${vendas15.toLocaleString('pt-BR')}</td>
+            <td class="p-3 text-right text-gray-600">${vendasMesAnt.toLocaleString('pt-BR')}</td>
             <td class="p-3 text-right font-bold ${precisaComprar ? 'text-red-600' : 'text-gray-700'}">
               ${(p.sugestao_compra || 0).toLocaleString('pt-BR')}
             </td>
