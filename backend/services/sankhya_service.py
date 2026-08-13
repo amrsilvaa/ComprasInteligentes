@@ -44,7 +44,7 @@ def autenticar_sankhya():
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta de alta performance com Custo (CUSREP) e Preço de Venda (Tabela 604/TOP 1)."""
+    """Consulta de alta performance trazendo Custo de Reposição, Custo Gerencial, Preço de Venda e Cálculo de Preço por KG."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
@@ -79,6 +79,8 @@ def buscar_dados_estoque_vendas():
                 p.CODPROD, 
                 p.DESCRPROD, 
                 ISNULL(p.CODVOL, 'UN') AS UNIDADE,
+                ISNULL(MAX(p.PESOLIQUIDO), 0) AS PESOLIQUIDO,
+                ISNULL(MAX(p.PESOBRUTO), 0) AS PESOBRUTO,
                 ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0) AS ESTOQUE,
                 ISNULL(MAX(e.ESTMIN), 0) AS ESTMIN,
                 ISNULL(v15.VENDA_15, 0) AS VENDA_15,
@@ -93,18 +95,15 @@ def buscar_dados_estoque_vendas():
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA,
                 ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
-                ISNULL(MAX(c.CUSREP), 0) AS CUSTO,
-                ISNULL((
-                    SELECT TOP 1 VLRVENDA 
-                    FROM TGFEXC 
-                    WHERE CODPROD = p.CODPROD 
-                    ORDER BY DHALTREG DESC
-                ), 0) AS PRECO_VENDA
-            FROM TGFPRO p
+                ISNULL(MAX(c.CUSREP), 0) AS CUSTO_REPOSICAO,
+                ISNULL(MAX(c.CUSGER), 0) AS CUSTO_GERENCIAL,
+                ISNULL(MAX(prc.VLRVENDA), 0) AS PRECO_VENDA
+            LEFT JOIN TGFPRO p
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
-            LEFT JOIN TGFCUS c ON p.CODPROD = c.CODPROD AND c.CODEMP = 1
+            LEFT JOIN TGFCUS c ON p.CODPROD = c.CODPROD AND c.CODEMP = 1 AND c.DTATUAL = (SELECT MAX(c2.DTATUAL) FROM TGFCUS c2 WHERE c2.CODPROD = p.CODPROD AND c2.CODEMP = 1)
+            LEFT JOIN TGFEXC prc ON p.CODPROD = prc.CODPROD AND prc.NUTAB = 604
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
             GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
@@ -119,17 +118,43 @@ def buscar_dados_estoque_vendas():
         if "rows" in response_body and response_body["rows"]:
             produtos = []
             for linha in response_body["rows"]:
+                unidade = linha[2] if len(linha) > 2 and linha[2] else "UN"
+                peso_liq = float(linha[3]) if len(linha) > 3 and linha[3] is not None else 0.0
+                peso_bruto = float(linha[4]) if len(linha) > 4 and linha[4] is not None else 0.0
+                
+                custo_rep = float(linha[10]) if len(linha) > 10 and linha[10] is not None else 0.0
+                custo_ger = float(linha[11]) if len(linha) > 11 and linha[11] is not None else 0.0
+                custo_principal = custo_rep if custo_rep > 0 else custo_ger
+                
+                preco_venda = float(linha[12]) if len(linha) > 12 and linha[12] is not None else 0.0
+
+                # Identifica o peso unitario da embalagem (ex: 20kg na caixa de frango)
+                peso_unitario = peso_liq if peso_liq > 0 else peso_bruto
+
+                # Se for caixa/fardo e tiver peso cadastrado, calcula os valores por KG
+                if unidade != "KG" and peso_unitario > 0:
+                    preco_kg = preco_venda / peso_unitario
+                    custo_kg = custo_principal / peso_unitario
+                else:
+                    preco_kg = preco_venda
+                    custo_kg = custo_principal
+
                 produtos.append({
                     "codigo": linha[0],
                     "descricao": linha[1],
-                    "unidade": linha[2] if len(linha) > 2 else "UN",
-                    "estoque": float(linha[3]) if len(linha) > 3 and linha[3] is not None else 0.0,
-                    "estoque_minimo": float(linha[4]) if len(linha) > 4 and linha[4] is not None else 0.0,
-                    "venda_15d": float(linha[5]) if len(linha) > 5 and linha[5] is not None else 0.0,
-                    "sugestao_compra": float(linha[6]) if len(linha) > 6 and linha[6] is not None else 0.0,
-                    "venda_mes_anterior": float(linha[7]) if len(linha) > 7 and linha[7] is not None else 0.0,
-                    "custo": float(linha[8]) if len(linha) > 8 and linha[8] is not None else 0.0,
-                    "preco_venda": float(linha[9]) if len(linha) > 9 and linha[9] is not None else 0.0
+                    "unidade": unidade,
+                    "peso_unitario": peso_unitario,
+                    "estoque": float(linha[5]) if len(linha) > 5 and linha[5] is not None else 0.0,
+                    "estoque_minimo": float(linha[6]) if len(linha) > 6 and linha[6] is not None else 0.0,
+                    "venda_15d": float(linha[7]) if len(linha) > 7 and linha[7] is not None else 0.0,
+                    "sugestao_compra": float(linha[8]) if len(linha) > 8 and linha[8] is not None else 0.0,
+                    "venda_mes_anterior": float(linha[9]) if len(linha) > 9 and linha[9] is not None else 0.0,
+                    "custo": custo_principal,
+                    "custo_kg": round(custo_kg, 2),
+                    "custo_reposicao": custo_rep,
+                    "custo_gerencial": custo_ger,
+                    "preco_venda": preco_venda,
+                    "preco_kg": round(preco_kg, 2)
                 })
             return produtos
 
@@ -139,3 +164,4 @@ def buscar_dados_estoque_vendas():
     except Exception as e:
         print(f"[ERRO SANKHYA_SERVICE]: {str(e)}")
         return []
+```
