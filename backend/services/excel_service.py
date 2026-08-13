@@ -4,22 +4,19 @@ from typing import List, Dict, Any
 import sys
 import os
 
-# Adiciona o diretório 'backend' e a raiz do projeto ao PATH
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-root_dir = os.path.dirname(parent_dir)
+# Adiciona o diretório 'backend' e a raiz do repositório no sys.path de forma garantida
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Aponta para 'backend'
+ROOT_DIR = os.path.dirname(BASE_DIR)                                    # Aponta para a raiz do projeto
 
-for path in [current_dir, parent_dir, root_dir]:
+for path in [BASE_DIR, ROOT_DIR]:
     if path not in sys.path:
         sys.path.insert(0, path)
 
 try:
+    from backend.config import settings  # type: ignore
+except ImportError:
     import config
     settings = config.settings
-except AttributeError:
-    from config import settings
-except ImportError:
-    from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +127,11 @@ class SankhyaService:
         except Exception as e:
             logger.error(f"Erro ao buscar dados do Sankhya: {str(e)}")
             raise e
+
+# Alias para compatibilidade caso o app.py chame a função diretamente
+def buscar_dados_estoque_vendas():
+    service = SankhyaService()
+    return service.get_sugestao_compras()
 
 # Alias para compatibilidade caso o app.py chame a função diretamente
 def buscar_dados_estoque_vendas():
