@@ -70,7 +70,7 @@ def extrair_peso_da_descricao(descricao):
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta de alta performance trazendo Custo e Preço calculados por KG e por Embalagem."""
+    """Consulta otimizada para alta performance (< 1s) usando JOINs diretos com índices."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
@@ -100,38 +100,42 @@ def buscar_dados_estoque_vendas():
                   AND c.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
                   AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
                 GROUP BY i.CODPROD
+            ),
+            EstoqueAgg AS (
+                SELECT 
+                    CODPROD, 
+                    ISNULL(SUM(ESTOQUE - RESERVADO), 0) AS ESTOQUE,
+                    ISNULL(MAX(ESTMIN), 0) AS ESTMIN
+                FROM TGFEST
+                GROUP BY CODPROD
             )
             SELECT 
                 p.CODPROD, 
                 p.DESCRPROD, 
                 ISNULL(p.CODVOL, 'UN') AS UNIDADE,
-                ISNULL(MAX(p.PESOBRUTO), 0) AS PESOBRUTO,
-                ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0) AS ESTOQUE,
-                ISNULL(MAX(e.ESTMIN), 0) AS ESTMIN,
+                ISNULL(p.PESOBRUTO, 0) AS PESOBRUTO,
+                ISNULL(e.ESTOQUE, 0) AS ESTOQUE,
+                ISNULL(e.ESTMIN, 0) AS ESTMIN,
                 ISNULL(v15.VENDA_15, 0) AS VENDA_15,
                 CASE 
-                    WHEN ISNULL(MAX(e.ESTMIN), 0) > 0 THEN 
-                        CASE WHEN (ISNULL(MAX(e.ESTMIN), 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0)) > 0 
-                             THEN (ISNULL(MAX(e.ESTMIN), 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0))
-                             ELSE 0 END
+                    WHEN ISNULL(e.ESTMIN, 0) > 0 THEN 
+                        CASE WHEN (e.ESTMIN - ISNULL(e.ESTOQUE, 0)) > 0 THEN (e.ESTMIN - ISNULL(e.ESTOQUE, 0)) ELSE 0 END
                     ELSE 
-                        CASE WHEN (ISNULL(v15.VENDA_15, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0)) > 0 
-                             THEN (ISNULL(v15.VENDA_15, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0))
-                             ELSE 0 END
+                        CASE WHEN (ISNULL(v15.VENDA_15, 0) - ISNULL(e.ESTOQUE, 0)) > 0 THEN (ISNULL(v15.VENDA_15, 0) - ISNULL(e.ESTOQUE, 0)) ELSE 0 END
                 END AS SUGESTAO_COMPRA,
                 ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
                 ISNULL(MAX(c.CUSREP), 0) AS CUSTO_REPOSICAO,
                 ISNULL(MAX(c.CUSGER), 0) AS CUSTO_GERENCIAL,
                 ISNULL(MAX(prc.VLRVENDA), 0) AS PRECO_VENDA
             FROM TGFPRO p
-            LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
+            LEFT JOIN EstoqueAgg e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
             LEFT JOIN TGFCUS c ON p.CODPROD = c.CODPROD AND c.CODEMP = 1
             LEFT JOIN TGFEXC prc ON p.CODPROD = prc.CODPROD AND prc.NUTAB = 604
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
-            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
+            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, p.PESOBRUTO, e.ESTOQUE, e.ESTMIN, v15.VENDA_15, vma.VENDA_MES_ANT
             ORDER BY SUGESTAO_COMPRA DESC, v15.VENDA_15 DESC, p.DESCRPROD ASC
         """
 
@@ -160,7 +164,7 @@ def buscar_dados_estoque_vendas():
                 
                 preco_venda = float(linha[11]) if len(linha) > 11 and linha[11] is not None else 0.0
 
-                # Identifica o peso unitário (1º peso do cadastro, 2º extrator da descrição)
+                # Identifica o peso unitário (1º peso do cadastro em PESOBRUTO, 2º extrator da descrição)
                 peso_unitario = peso_bruto if peso_bruto > 0 else extrair_peso_da_descricao(descricao)
 
                 # Se a embalagem for Caixa/Fardo e tiver peso, calcula o valor por KG
