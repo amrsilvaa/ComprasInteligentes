@@ -44,7 +44,7 @@ def autenticar_sankhya():
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta saldo real, vendas 15d, vendas mês ant., custo e preço de venda otimizados."""
+    """Consulta saldo real, vendas 15d, vendas mês ant., custo e preço de venda ajustados."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
@@ -75,8 +75,19 @@ def buscar_dados_estoque_vendas():
                   AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
                 GROUP BY i.CODPROD
             ),
-            UltimaTabelaPreco AS (
-                SELECT CODTAB FROM TGFTAB WHERE ISNULL(ATIVO, 'S') = 'S'
+            CustoBase AS (
+                SELECT 
+                    CODPROD,
+                    ISNULL(MAX(CUSTOCOM), 0) AS CUSTO
+                FROM TGFCUS
+                GROUP BY CODPROD
+            ),
+            PrecoBase AS (
+                SELECT 
+                    CODPROD,
+                    ISNULL(MAX(VLRVENDA), 0) AS PRECO_VENDA
+                FROM TGFEXC
+                GROUP BY CODPROD
             )
             SELECT 
                 p.CODPROD, 
@@ -96,16 +107,17 @@ def buscar_dados_estoque_vendas():
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA,
                 ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
-                ISNULL(MAX(e.CUSTO), 0) AS CUSTO,
-                ISNULL(MAX(prc.VLRVENDA), 0) AS PRECO_VENDA
+                ISNULL(cb.CUSTO, 0) AS CUSTO,
+                ISNULL(pb.PRECO_VENDA, 0) AS PRECO_VENDA
             FROM TGFPRO p
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
-            LEFT JOIN TGFEXC prc ON p.CODPROD = prc.CODPROD AND prc.CODTAB IN (SELECT CODTAB FROM UltimaTabelaPreco)
+            LEFT JOIN CustoBase cb ON p.CODPROD = cb.CODPROD
+            LEFT JOIN PrecoBase pb ON p.CODPROD = pb.CODPROD
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
-            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
+            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT, cb.CUSTO, pb.PRECO_VENDA
             ORDER BY SUGESTAO_COMPRA DESC, v15.VENDA_15 DESC, p.DESCRPROD ASC
         """
 
@@ -136,4 +148,4 @@ def buscar_dados_estoque_vendas():
 
     except Exception as e:
         print(f"[ERRO SANKHYA_SERVICE]: {str(e)}")
-        raise e
+        return []
