@@ -4,117 +4,103 @@ from typing import List, Dict, Any
 import sys
 import os
 
-# Adiciona a pasta 'backend' ao caminho de busca do Python
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Resolvendo caminhos para importação do config
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT_DIR = os.path.dirname(BASE_DIR)
 
-import config  # type: ignore
-settings = config.settings
+for path in [BASE_DIR, ROOT_DIR]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+try:
+    import config  # type: ignore
+    settings = config.settings
+except ModuleNotFoundError:
+    import backend.config as config  # type: ignore
+    settings = config.settings
 
 logger = logging.getLogger(__name__)
 
+
 def buscar_dados_estoque_vendas() -> List[Dict[str, Any]]:
-    host = settings.SANKHYA_HOST
-    port = int(getattr(settings, 'SANKHYA_PORT', 1433))
-    database = settings.SANKHYA_SERVICE_NAME
-    user = settings.SANKHYA_USER
-    password = settings.SANKHYA_PASSWORD
-
-    query = """
-    WITH 
-    Vendas15Dias AS (
-        SELECT 
-            ite.CODPROD,
-            ISNULL(SUM(ite.QTDNEG), 0) AS QTD_15D
-        FROM TGFITE ite WITH (NOLOCK)
-        INNER JOIN TGFCAB cab WITH (NOLOCK) ON cab.NUNOTA = ite.NUNOTA
-        WHERE cab.DTNEG >= GETDATE() - 15
-          AND cab.STATUSNOTA = 'L'
-          AND cab.CODEMP = 1
-        GROUP BY ite.CODPROD
-    ),
-    VendasMesAnterior AS (
-        SELECT 
-            ite.CODPROD,
-            ISNULL(SUM(ite.QTDNEG), 0) AS QTD_MES_ANT
-        FROM TGFITE ite WITH (NOLOCK)
-        INNER JOIN TGFCAB cab WITH (NOLOCK) ON cab.NUNOTA = ite.NUNOTA
-        WHERE cab.DTNEG >= DATEADD(month, -1, DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0))
-          AND cab.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
-          AND cab.STATUSNOTA = 'L'
-          AND cab.CODEMP = 1
-        GROUP BY ite.CODPROD
-    ),
-    EstoqueTotal AS (
-        SELECT 
-            e.CODPROD,
-            ISNULL(SUM(
-                CASE 
-                    WHEN (e.ESTOQUE - e.RESERVADO) < 0 THEN 0 
-                    ELSE (e.ESTOQUE - e.RESERVADO) 
-                END
-            ), 0) AS ESTOQUE,
-            ISNULL(MAX(e.ESTMIN), 0) AS ESTMIN
-        FROM TGFEST e WITH (NOLOCK)
-        WHERE e.CODEMP = 1
-        GROUP BY e.CODPROD
-    )
-    SELECT 
-        p.CODPROD AS CODIGO,
-        p.DESCRPROD AS DESCRICAO,
-        p.COMPLPROD,
-        p.CODVOL AS UNID,
-        ISNULL(e.ESTOQUE, 0) AS ESTOQUE,
-        ISNULL(e.ESTMIN, 0) AS ESTMIN,
-        ISNULL(v15.QTD_15D, 0) AS VENDAS_15D,
-        ISNULL(vma.QTD_MES_ANT, 0) AS VENDAS_MES_ANT,
-        ISNULL(cus.CUSSEMICM, 0) AS CUSTO_UN,
-        ISNULL(exc.VLRVENDA, 0) AS PRECO_VENDA
-    FROM TGFPRO p WITH (NOLOCK)
-    LEFT JOIN EstoqueTotal e ON e.CODPROD = p.CODPROD
-    LEFT JOIN Vendas15Dias v15 ON v15.CODPROD = p.CODPROD
-    LEFT JOIN VendasMesAnterior vma ON vma.CODPROD = p.CODPROD
-    LEFT JOIN TGFCUS cus WITH (NOLOCK) ON cus.CODPROD = p.CODPROD AND cus.CODEMP = 1
-    LEFT JOIN TGFEXC exc WITH (NOLOCK) ON exc.CODPROD = p.CODPROD AND exc.NUTAB = 1
-    WHERE p.ATIVO = 'S'
-      AND (ISNULL(v15.QTD_15D, 0) > 0 OR ISNULL(e.ESTOQUE, 0) > 0)
-    ORDER BY VENDAS_15D DESC
     """
-
+    Conecta ao banco SQL Server do Sankhya e busca dados de estoque e vendas.
+    """
     try:
         conn = pymssql.connect(
-            server=host,
-            port=port,
-            user=user,
-            password=password,
-            database=database,
-            as_dict=True
+            server=settings.SANKHYA_HOST,
+            user=settings.SANKHYA_USER,
+            password=settings.SANKHYA_PASSWORD,
+            database=settings.SANKHYA_DATABASE,
+            port=settings.SANKHYA_PORT
         )
-        cursor = conn.cursor()
+        
+        cursor = conn.cursor(as_dict=True)
+        
+        query = """
+        WITH Vendas15D AS (
+            -- Vendas dos últimos 15 dias (exclui devoluções e transferências)
+            SELECT 
+                ITE.CODPROD,
+                SUM(ITE.QTDNEG) AS QTD_VENDIDA_15D
+            FROM TGFCAB CAB
+            INNER JOIN TGFITE ITE ON CAB.NUNOTA = ITE.NUNOTA
+            INNER JOIN TGFTOP TOP ON CAB.CODTIPOPER = TOP.CODTIPOPER AND CAB.DHTIPOPER = TOP.DHALTER
+            WHERE CAB.DTNEG >= DATEADD(day, -15, CAST(GETDATE() AS DATE))
+              AND CAB.STATUSNOTA = 'L'
+              AND TOP.GHOST = 'N'
+              AND TOP.BONIFICACAO = 'N'
+              AND TOP.DTPRESO = 'N'
+              AND TOP.ATUALEST = 'B' -- Baixa estoque (Vendas efetivas)
+            GROUP BY ITE.CODPROD
+        ),
+        VendasMesAnt AS (
+            -- Vendas do mês anterior completo
+            SELECT 
+                ITE.CODPROD,
+                SUM(ITE.QTDNEG) AS QTD_VENDIDA_MES_ANT
+            FROM TGFCAB CAB
+            INNER JOIN TGFITE ITE ON CAB.NUNOTA = ITE.NUNOTA
+            INNER JOIN TGFTOP TOP ON CAB.CODTIPOPER = TOP.CODTIPOPER AND CAB.DHTIPOPER = TOP.DHALTER
+            WHERE CAB.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
+              AND CAB.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
+              AND CAB.STATUSNOTA = 'L'
+              AND TOP.GHOST = 'N'
+              AND TOP.BONIFICACAO = 'N'
+              AND TOP.DTPRESO = 'N'
+              AND TOP.ATUALEST = 'B'
+            GROUP BY ITE.CODPROD
+        )
+        SELECT 
+            PRO.CODPROD,
+            PRO.DESCRPROD,
+            PRO.CODVOL AS UNIDADEMEDIDA,
+            ISNULL(EST.ESTOQUE, 0) AS ESTOQUE_ATUAL,
+            ISNULL(EST.ESTMIN, 0) AS ESTOQUE_MINIMO,
+            ISNULL(V15.QTD_VENDIDA_15D, 0) AS VENDAS_15D,
+            ISNULL(VMA.QTD_VENDIDA_MES_ANT, 0) AS VENDAS_MES_ANTERIOR,
+            ISNULL(CUS.CUSSEMICMS, 0) AS CUSTO_UNITARIO,
+            ISNULL(EXC.VLRVENDA, 0) AS PRECO_VENDA
+        FROM TGFPRO PRO
+        LEFT JOIN TGFEST EST ON PRO.CODPROD = EST.CODPROD AND EST.CODEMP = 1 AND EST.CODLOCAL = 0
+        LEFT JOIN Vendas15D V15 ON PRO.CODPROD = V15.CODPROD
+        LEFT JOIN VendasMesAnt VMA ON PRO.CODPROD = VMA.CODPROD
+        LEFT JOIN TGFCUS CUS ON PRO.CODPROD = CUS.CODPROD AND CUS.CODEMP = 1 AND CUS.DTATUAL = (
+            SELECT MAX(DTATUAL) FROM TGFCUS WHERE CODPROD = PRO.CODPROD AND CODEMP = 1
+        )
+        LEFT JOIN TGFEXC EXC ON PRO.CODPROD = EXC.CODPROD AND EXC.NUTAB = 1
+        WHERE PRO.ATIVO = 'S'
+          AND (ISNULL(EST.ESTOQUE, 0) > 0 OR ISNULL(V15.QTD_VENDIDA_15D, 0) > 0)
+        ORDER BY PRO.DESCRPROD;
+        """
+        
         cursor.execute(query)
+        result = cursor.fetchall()
         
-        rows = cursor.fetchall()
-        result = []
-        
-        for row in rows:
-            item = {k.lower(): v for k, v in row.items()}
-            
-            vendas_15d = item.get('vendas_15d', 0) or 0
-            estoque = item.get('estoque', 0) or 0
-            sugestao = max(0, vendas_15d - estoque)
-            
-            item['sugestao_compra'] = sugestao
-            item['status'] = 'REPOR' if sugestao > 0 else 'OK'
-            
-            result.append(item)
-            
         cursor.close()
         conn.close()
         return result
-        
+
     except Exception as e:
         logger.error(f"Erro ao buscar dados do Sankhya: {str(e)}")
         raise e
-
-
-
-    
