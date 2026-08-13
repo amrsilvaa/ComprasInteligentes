@@ -44,7 +44,7 @@ def autenticar_sankhya():
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta saldo real, vendas 15d, vendas mês ant. e custo gerencial."""
+    """Consulta saldo real, vendas 15d e vendas mês ant. (versão ultra leve)."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
@@ -74,13 +74,6 @@ def buscar_dados_estoque_vendas():
                   AND c.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
                   AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
                 GROUP BY i.CODPROD
-            ),
-            CustoAtual AS (
-                SELECT 
-                    CODPROD,
-                    ISNULL(MAX(CUSTOCOM), 0) AS CUSTO
-                FROM TGFCUS
-                GROUP BY CODPROD
             )
             SELECT 
                 p.CODPROD, 
@@ -100,16 +93,15 @@ def buscar_dados_estoque_vendas():
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA,
                 ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
-                ISNULL(ca.CUSTO, 0) AS CUSTO,
+                0 AS CUSTO,
                 0 AS PRECO_VENDA
             FROM TGFPRO p
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
-            LEFT JOIN CustoAtual ca ON p.CODPROD = ca.CODPROD
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
-            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT, ca.CUSTO
+            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
             ORDER BY SUGESTAO_COMPRA DESC, v15.VENDA_15 DESC, p.DESCRPROD ASC
         """
 
@@ -135,8 +127,9 @@ def buscar_dados_estoque_vendas():
                 })
             return produtos
 
+        print(f"[RESPOSTA SANKHYA SEM ROWS]: {data_dbexp}")
         return []
 
     except Exception as e:
         print(f"[ERRO SANKHYA_SERVICE]: {str(e)}")
-        return [{"erro": True, "mensagem": str(e)}]
+        raise e
