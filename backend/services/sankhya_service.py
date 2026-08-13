@@ -44,7 +44,7 @@ def autenticar_sankhya():
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta de alta performance com Custo (CUSREP) e Preço de Venda (Tabela 604/TOP 1)."""
+    """Consulta de alta performance trazendo Custo de Reposição, Custo Gerencial e Preço de Venda."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
@@ -93,7 +93,18 @@ def buscar_dados_estoque_vendas():
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA,
                 ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
-                ISNULL(MAX(c.CUSREP), 0) AS CUSTO,
+                ISNULL((
+                    SELECT TOP 1 CUSREP 
+                    FROM TGFCUS 
+                    WHERE CODPROD = p.CODPROD AND CODEMP = 1 
+                    ORDER BY DTATUAL DESC
+                ), 0) AS CUSTO_REPOSICAO,
+                ISNULL((
+                    SELECT TOP 1 CUSGER 
+                    FROM TGFCUS 
+                    WHERE CODPROD = p.CODPROD AND CODEMP = 1 
+                    ORDER BY DTATUAL DESC
+                ), 0) AS CUSTO_GERENCIAL,
                 ISNULL((
                     SELECT TOP 1 VLRVENDA 
                     FROM TGFEXC 
@@ -104,7 +115,6 @@ def buscar_dados_estoque_vendas():
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
-            LEFT JOIN TGFCUS c ON p.CODPROD = c.CODPROD AND c.CODEMP = 1
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
             GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
@@ -119,6 +129,12 @@ def buscar_dados_estoque_vendas():
         if "rows" in response_body and response_body["rows"]:
             produtos = []
             for linha in response_body["rows"]:
+                custo_rep = float(linha[8]) if len(linha) > 8 and linha[8] is not None else 0.0
+                custo_ger = float(linha[9]) if len(linha) > 9 and linha[9] is not None else 0.0
+                
+                # Utiliza CUSREP como custo principal da tabela; caso venha zerado, usa CUSGER
+                custo_principal = custo_rep if custo_rep > 0 else custo_ger
+
                 produtos.append({
                     "codigo": linha[0],
                     "descricao": linha[1],
@@ -128,8 +144,10 @@ def buscar_dados_estoque_vendas():
                     "venda_15d": float(linha[5]) if len(linha) > 5 and linha[5] is not None else 0.0,
                     "sugestao_compra": float(linha[6]) if len(linha) > 6 and linha[6] is not None else 0.0,
                     "venda_mes_anterior": float(linha[7]) if len(linha) > 7 and linha[7] is not None else 0.0,
-                    "custo": float(linha[8]) if len(linha) > 8 and linha[8] is not None else 0.0,
-                    "preco_venda": float(linha[9]) if len(linha) > 9 and linha[9] is not None else 0.0
+                    "custo": custo_principal,
+                    "custo_reposicao": custo_rep,
+                    "custo_gerencial": custo_ger,
+                    "preco_venda": float(linha[10]) if len(linha) > 10 and linha[10] is not None else 0.0
                 })
             return produtos
 
