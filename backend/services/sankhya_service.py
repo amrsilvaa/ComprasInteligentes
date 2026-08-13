@@ -1,25 +1,20 @@
 import pymssql
 import logging
 from typing import List, Dict, Any
-import sys
 import os
+from dotenv import load_dotenv
 
-# Resolvendo caminhos para importação do config
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ROOT_DIR = os.path.dirname(BASE_DIR)
-
-for path in [BASE_DIR, ROOT_DIR]:
-    if path not in sys.path:
-        sys.path.insert(0, path)
-
-try:
-    import config  # type: ignore
-    settings = config.settings
-except ModuleNotFoundError:
-    import backend.config as config  # type: ignore
-    settings = config.settings
+# Carrega as variáveis de ambiente do arquivo .env ou do próprio servidor (Render)
+load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# Configurações do banco de dados (lidas diretamente do ambiente)
+SANKHYA_HOST = os.getenv("SANKHYA_HOST")
+SANKHYA_USER = os.getenv("SANKHYA_USER")
+SANKHYA_PASSWORD = os.getenv("SANKHYA_PASSWORD")
+SANKHYA_DATABASE = os.getenv("SANKHYA_DATABASE")
+SANKHYA_PORT = int(os.getenv("SANKHYA_PORT", "1433"))
 
 
 def buscar_dados_estoque_vendas() -> List[Dict[str, Any]]:
@@ -28,11 +23,11 @@ def buscar_dados_estoque_vendas() -> List[Dict[str, Any]]:
     """
     try:
         conn = pymssql.connect(
-            server=settings.SANKHYA_HOST,
-            user=settings.SANKHYA_USER,
-            password=settings.SANKHYA_PASSWORD,
-            database=settings.SANKHYA_DATABASE,
-            port=settings.SANKHYA_PORT
+            server=SANKHYA_HOST,
+            user=SANKHYA_USER,
+            password=SANKHYA_PASSWORD,
+            database=SANKHYA_DATABASE,
+            port=SANKHYA_PORT
         )
         
         cursor = conn.cursor(as_dict=True)
