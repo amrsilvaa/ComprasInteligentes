@@ -22,7 +22,7 @@ HTML_CONTENT = """
   <title>Painel de Compras - Sankhya</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    th.sortable { cursor: pointer; select-user: none; }
+    th.sortable { cursor: pointer; user-select: none; }
     th.sortable:hover { background-color: #374151; }
   </style>
 </head>
@@ -31,7 +31,7 @@ HTML_CONTENT = """
     
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
       <div>
-        <h1 class="text-2xl font-bold text-gray-800">Sugestão de Compras (Giro 30 Dias)</h1>
+        <h1 class="text-2xl font-bold text-gray-800">Sugestão de Compras (Giro 15 Dias)</h1>
         <p class="text-sm text-gray-500">Clique no título das colunas para ordenar</p>
       </div>
       <input 
@@ -51,7 +51,7 @@ HTML_CONTENT = """
             <th class="p-3">Unid.</th>
             <th class="p-3 text-right sortable" onclick="ordenarPor('estoque')">Estoque ⇕</th>
             <th class="p-3 text-right sortable" onclick="ordenarPor('estoque_minimo')">Est. Mín. ⇕</th>
-            <th class="p-3 text-right sortable" onclick="ordenarPor('venda_30d')">Vendas (30d) ⇕</th>
+            <th class="p-3 text-right sortable" onclick="ordenarPor('venda_30d')">Vendas (15d) ⇕</th>
             <th class="p-3 text-right sortable" onclick="ordenarPor('sugestao_compra')">Sugestão Compra ⇕</th>
             <th class="p-3 text-center">Status</th>
           </tr>
@@ -95,12 +95,12 @@ HTML_CONTENT = """
         ordemAsc = !ordemAsc;
       } else {
         colunaAtual = coluna;
-        ordemAsc = (coluna === 'descricao'); // Alfabética começa A-Z, números começam do maior
+        ordemAsc = (coluna === 'descricao');
       }
 
       produtosFiltrados.sort((a, b) => {
-        let valA = a[coluna];
-        let valB = b[coluna];
+        let valA = a[coluna] ?? 0;
+        let valB = b[coluna] ?? 0;
 
         if (typeof valA === 'string') {
           return ordemAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
@@ -125,16 +125,19 @@ HTML_CONTENT = """
           ? `<span class="bg-red-100 text-red-800 font-bold px-3 py-1 rounded-full text-xs">REPOR</span>`
           : `<span class="bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full text-xs">OK</span>`;
 
+        // Pega vendas 15d vindo do backend (com fallback caso venha via chave antiga)
+        const vendas15 = p.venda_15d ?? p.venda_30d ?? 0;
+
         return `
           <tr class="hover:bg-blue-50 transition-colors ${precisaComprar ? 'bg-red-50/40' : ''}">
             <td class="p-3 font-mono text-gray-600">${p.codigo}</td>
             <td class="p-3 font-medium text-gray-900">${p.descricao}</td>
             <td class="p-3 text-gray-500">${p.unidade}</td>
-            <td class="p-3 text-right font-semibold text-gray-800">${p.estoque.toLocaleString('pt-BR')}</td>
-            <td class="p-3 text-right text-gray-500">${p.estoque_minimo.toLocaleString('pt-BR')}</td>
-            <td class="p-3 text-right font-semibold text-blue-600">${p.venda_30d.toLocaleString('pt-BR')}</td>
+            <td class="p-3 text-right font-semibold text-gray-800">${(p.estoque || 0).toLocaleString('pt-BR')}</td>
+            <td class="p-3 text-right text-gray-500">${(p.estoque_minimo || 0).toLocaleString('pt-BR')}</td>
+            <td class="p-3 text-right font-semibold text-blue-600">${vendas15.toLocaleString('pt-BR')}</td>
             <td class="p-3 text-right font-bold ${precisaComprar ? 'text-red-600' : 'text-gray-700'}">
-              ${p.sugestao_compra.toLocaleString('pt-BR')}
+              ${(p.sugestao_compra || 0).toLocaleString('pt-BR')}
             </td>
             <td class="p-3 text-center">${badgeStatus}</td>
           </tr>
@@ -145,7 +148,7 @@ HTML_CONTENT = """
     document.getElementById('searchInput').addEventListener('input', (e) => {
       const termo = e.target.value.toLowerCase();
       produtosFiltrados = todosProdutos.filter(p => 
-        p.descricao.toLowerCase().includes(termo) || 
+        (p.descricao && p.descricao.toLowerCase().includes(termo)) || 
         String(p.codigo).includes(termo)
       );
       renderizarTabela(produtosFiltrados);

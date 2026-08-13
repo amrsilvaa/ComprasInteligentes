@@ -44,24 +44,24 @@ def autenticar_sankhya():
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta saldo real e vendas dos últimos 30 dias para calcular a compra."""
+    """Consulta saldo real e vendas dos últimos 15 dias para calcular a compra."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
 
         url_dbexp = f"{base_endpoint}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSessionHandle={jsessionid}"
         
-        # SQL com CTE para buscar histórico de vendas dos últimos 30 dias
+        # SQL com CTE para buscar histórico de vendas dos últimos 15 dias
         sql_query = """
-            WITH Vendas30 AS (
+            WITH Vendas15 AS (
                 SELECT 
                     i.CODPROD,
-                    ISNULL(SUM(CASE WHEN c.TIPMOV = 'V' THEN i.QTDNEG WHEN c.TIPMOV = 'D' THEN -i.QTDNEG ELSE 0 END), 0) AS VENDA_30
+                    ISNULL(SUM(CASE WHEN c.TIPMOV = 'V' THEN i.QTDNEG WHEN c.TIPMOV = 'D' THEN -i.QTDNEG ELSE 0 END), 0) AS VENDA_15
                 FROM TGFITE i
                 INNER JOIN TGFCAB c ON c.NUNOTA = i.NUNOTA
                 WHERE c.STATUSNOTA = 'L'
                   AND c.TIPMOV IN ('V', 'D')
-                  AND c.DTNEG >= DATEADD(day, -30, GETDATE())
+                  AND c.DTNEG >= DATEADD(day, -15, GETDATE())
                 GROUP BY i.CODPROD
             )
             SELECT 
@@ -70,24 +70,24 @@ def buscar_dados_estoque_vendas():
                 ISNULL(p.CODVOL, 'UN') AS UNIDADE,
                 ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0) AS ESTOQUE,
                 ISNULL(MAX(e.ESTMIN), 0) AS ESTMIN,
-                ISNULL(v.VENDA_30, 0) AS VENDA_30,
+                ISNULL(v.VENDA_15, 0) AS VENDA_15,
                 CASE 
                     WHEN ISNULL(MAX(e.ESTMIN), 0) > 0 THEN 
                         CASE WHEN (ISNULL(MAX(e.ESTMIN), 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0)) > 0 
                              THEN (ISNULL(MAX(e.ESTMIN), 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0))
                              ELSE 0 END
                     ELSE 
-                        CASE WHEN (ISNULL(v.VENDA_30, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0)) > 0 
-                             THEN (ISNULL(v.VENDA_30, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0))
+                        CASE WHEN (ISNULL(v.VENDA_15, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0)) > 0 
+                             THEN (ISNULL(v.VENDA_15, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0))
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA
             FROM TGFPRO p
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
-            LEFT JOIN Vendas30 v ON p.CODPROD = v.CODPROD
+            LEFT JOIN Vendas15 v ON p.CODPROD = v.CODPROD
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
-            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v.VENDA_30
-            ORDER BY SUGESTAO_COMPRA DESC, v.VENDA_30 DESC, p.DESCRPROD ASC
+            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v.VENDA_15
+            ORDER BY SUGESTAO_COMPRA DESC, v.VENDA_15 DESC, p.DESCRPROD ASC
         """
 
         payload_dbexp = {"requestBody": {"sql": sql_query}}
