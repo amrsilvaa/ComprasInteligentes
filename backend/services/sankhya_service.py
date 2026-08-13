@@ -51,7 +51,6 @@ class SankhyaService:
         EstoqueTotal AS (
             SELECT 
                 e.CODPROD,
-                -- Considera o saldo disponível desconsiderando valores negativos
                 ISNULL(SUM(
                     CASE 
                         WHEN (e.ESTOQUE - e.RESERVADO) < 0 THEN 0 
@@ -97,7 +96,6 @@ class SankhyaService:
             for row in rows:
                 item = dict(zip(columns, row))
                 
-                # Regra de Sugestão de Compras (Giro 15 Dias)
                 vendas_15d = item.get('vendas_15d', 0)
                 estoque = item.get('estoque', 0)
                 sugestao = max(0, vendas_15d - estoque)
