@@ -1,11 +1,22 @@
 import pymssql
 import logging
 from typing import List, Dict, Any
+import sys
+import os
+
+# Força o Python a enxergar a raiz e a pasta backend
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+
+for path in [BASE_DIR, ROOT_DIR]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 try:
     from backend.config import settings  # type: ignore
 except ImportError:
-    from config import settings  # type: ignore
+    import config  # type: ignore
+    settings = config.settings
 
 logger = logging.getLogger(__name__)
 
@@ -116,3 +127,7 @@ class SankhyaService:
         except Exception as e:
             logger.error(f"Erro ao buscar dados do Sankhya: {str(e)}")
             raise e
+
+def buscar_dados_estoque_vendas():
+    service = SankhyaService()
+    return service.get_sugestao_compras()
