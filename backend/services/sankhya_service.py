@@ -44,7 +44,7 @@ def autenticar_sankhya():
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta de alta performance: estoque, vendas e preço de venda Tabela 0 isolado."""
+    """Consulta de alta performance com Custo (CUSREP) e Preço de Venda (Tabela 604/TOP 1)."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
@@ -93,17 +93,18 @@ def buscar_dados_estoque_vendas():
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA,
                 ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
-                0 AS CUSTO,
+                ISNULL(MAX(c.CUSREP), 0) AS CUSTO,
                 ISNULL((
                     SELECT TOP 1 VLRVENDA 
                     FROM TGFEXC 
-                    WHERE CODPROD = p.CODPROD AND CODTAB = 0 
-                    ORDER BY DTVIG DESC
+                    WHERE CODPROD = p.CODPROD 
+                    ORDER BY DHALTREG DESC
                 ), 0) AS PRECO_VENDA
             FROM TGFPRO p
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
+            LEFT JOIN TGFCUS c ON p.CODPROD = c.CODPROD AND c.CODEMP = 1
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
             GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
