@@ -1,7 +1,7 @@
 import pymssql
 import logging
 from typing import List, Dict, Any
-from ..config import settings
+from ..config import settings  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -107,3 +107,7 @@ def buscar_dados_estoque_vendas() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Erro ao buscar dados do Sankhya: {str(e)}")
         raise e
+
+
+
+    
