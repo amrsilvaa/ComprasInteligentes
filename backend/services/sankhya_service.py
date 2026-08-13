@@ -44,7 +44,7 @@ def autenticar_sankhya():
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta saldo real, vendas dos últimos 15 dias e vendas do mês anterior."""
+    """Consulta saldo real, vendas 15d, vendas mês ant., custo e preço de venda."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
@@ -74,6 +74,16 @@ def buscar_dados_estoque_vendas():
                   AND c.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
                   AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
                 GROUP BY i.CODPROD
+            ),
+            UltimoCusto AS (
+                SELECT CODPROD, ISNULL(CUSTOCOM, CUSTOSEMICM) AS CUSTO,
+                       ROW_NUMBER() OVER (PARTITION BY CODPROD ORDER BY DTATUAL DESC) as rn
+                FROM TGFCUS
+            ),
+            UltimoPreco AS (
+                SELECT CODPROD, VLRVENDA,
+                       ROW_NUMBER() OVER (PARTITION BY CODPROD ORDER BY DTVIG DESC) as rn
+                FROM TGFEXC
             )
             SELECT 
                 p.CODPROD, 
@@ -92,14 +102,18 @@ def buscar_dados_estoque_vendas():
                              THEN (ISNULL(v15.VENDA_15, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0))
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA,
-                ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT
+                ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
+                ISNULL(c.CUSTO, 0) AS CUSTO,
+                ISNULL(pr.VLRVENDA, 0) AS PRECO_VENDA
             FROM TGFPRO p
             LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
+            LEFT JOIN UltimoCusto c ON p.CODPROD = c.CODPROD AND c.rn = 1
+            LEFT JOIN UltimoPreco pr ON p.CODPROD = pr.CODPROD AND pr.rn = 1
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
-            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
+            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT, c.CUSTO, pr.VLRVENDA
             ORDER BY SUGESTAO_COMPRA DESC, v15.VENDA_15 DESC, p.DESCRPROD ASC
         """
 
@@ -119,7 +133,9 @@ def buscar_dados_estoque_vendas():
                     "estoque_minimo": float(linha[4]) if len(linha) > 4 and linha[4] is not None else 0.0,
                     "venda_15d": float(linha[5]) if len(linha) > 5 and linha[5] is not None else 0.0,
                     "sugestao_compra": float(linha[6]) if len(linha) > 6 and linha[6] is not None else 0.0,
-                    "venda_mes_anterior": float(linha[7]) if len(linha) > 7 and linha[7] is not None else 0.0
+                    "venda_mes_anterior": float(linha[7]) if len(linha) > 7 and linha[7] is not None else 0.0,
+                    "custo": float(linha[8]) if len(linha) > 8 and linha[8] is not None else 0.0,
+                    "preco_venda": float(linha[9]) if len(linha) > 9 and linha[9] is not None else 0.0
                 })
             return produtos
 

@@ -53,13 +53,15 @@ HTML_CONTENT = """
             <th class="p-3 text-right sortable" onclick="ordenarPor('estoque_minimo')">Est. Mín. ⇕</th>
             <th class="p-3 text-right sortable" onclick="ordenarPor('venda_15d')">Vendas (15d) ⇕</th>
             <th class="p-3 text-right sortable" onclick="ordenarPor('venda_mes_anterior')">Vendas (Mês Ant.) ⇕</th>
+            <th class="p-3 text-right sortable" onclick="ordenarPor('custo')">Custo Un. (R$) ⇕</th>
+            <th class="p-3 text-right sortable" onclick="ordenarPor('preco_venda')">Preço Venda (R$) ⇕</th>
             <th class="p-3 text-right sortable" onclick="ordenarPor('sugestao_compra')">Sugestão Compra ⇕</th>
             <th class="p-3 text-center">Status</th>
           </tr>
         </thead>
         <tbody id="tableBody" class="divide-y divide-gray-200 text-sm">
           <tr>
-            <td colspan="9" class="p-6 text-center text-gray-500">Carregando dados do Sankhya...</td>
+            <td colspan="11" class="p-6 text-center text-gray-500">Carregando dados do Sankhya...</td>
           </tr>
         </tbody>
       </table>
@@ -73,10 +75,18 @@ HTML_CONTENT = """
     let colunaAtual = 'sugestao_compra';
     let ordemAsc = false;
 
+    function fmt(val) {
+      return (val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+
+    function fmtMoeda(val) {
+      return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
     async function carregarProdutos() {
       const tbody = document.getElementById('tableBody');
       try {
-        const response = await fetch('/api/sankhya');
+        const response = await fetch('/api/sankhya?t=' + new Date().getTime());
         const data = await response.json();
 
         if (data.sucesso && Array.isArray(data.produtos)) {
@@ -84,10 +94,10 @@ HTML_CONTENT = """
           produtosFiltrados = [...todosProdutos];
           renderizarTabela(produtosFiltrados);
         } else {
-          tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-red-500 font-semibold">Erro ao carregar dados.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="11" class="p-6 text-center text-red-500 font-semibold">Erro ao carregar dados.</td></tr>`;
         }
       } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-red-500 font-semibold">Falha de comunicação com o servidor.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="p-6 text-center text-red-500 font-semibold">Falha de comunicação com o servidor.</td></tr>`;
       }
     }
 
@@ -116,7 +126,7 @@ HTML_CONTENT = """
       const tbody = document.getElementById('tableBody');
 
       if (produtos.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-gray-500">Nenhum produto encontrado.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" class="p-6 text-center text-gray-500">Nenhum produto encontrado.</td></tr>`;
         return;
       }
 
@@ -134,12 +144,14 @@ HTML_CONTENT = """
             <td class="p-3 font-mono text-gray-600">${p.codigo}</td>
             <td class="p-3 font-medium text-gray-900">${p.descricao}</td>
             <td class="p-3 text-gray-500">${p.unidade}</td>
-            <td class="p-3 text-right font-semibold text-gray-800">${(p.estoque || 0).toLocaleString('pt-BR')}</td>
-            <td class="p-3 text-right text-gray-500">${(p.estoque_minimo || 0).toLocaleString('pt-BR')}</td>
-            <td class="p-3 text-right font-semibold text-blue-600">${vendas15.toLocaleString('pt-BR')}</td>
-            <td class="p-3 text-right text-gray-600">${vendasMesAnt.toLocaleString('pt-BR')}</td>
+            <td class="p-3 text-right font-semibold text-gray-800">${fmt(p.estoque)}</td>
+            <td class="p-3 text-right text-gray-500">${fmt(p.estoque_minimo)}</td>
+            <td class="p-3 text-right font-semibold text-blue-600">${fmt(vendas15)}</td>
+            <td class="p-3 text-right text-gray-600">${fmt(vendasMesAnt)}</td>
+            <td class="p-3 text-right font-mono text-gray-700">${fmtMoeda(p.custo)}</td>
+            <td class="p-3 text-right font-mono text-emerald-700 font-semibold">${fmtMoeda(p.preco_venda)}</td>
             <td class="p-3 text-right font-bold ${precisaComprar ? 'text-red-600' : 'text-gray-700'}">
-              ${(p.sugestao_compra || 0).toLocaleString('pt-BR')}
+              ${fmt(p.sugestao_compra)}
             </td>
             <td class="p-3 text-center">${badgeStatus}</td>
           </tr>
