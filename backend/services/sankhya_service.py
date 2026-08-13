@@ -44,7 +44,7 @@ def autenticar_sankhya():
 
 
 def buscar_dados_estoque_vendas():
-    """Consulta de alta performance trazendo Custo de Reposição, Custo Gerencial, Preço de Venda e Cálculo de Preço por KG."""
+    """Consulta trazendo Custo de Reposição real e Saldo de Estoque idêntico ao Sankhya."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
@@ -56,8 +56,8 @@ def buscar_dados_estoque_vendas():
                 SELECT 
                     i.CODPROD,
                     ISNULL(SUM(CASE WHEN c.TIPMOV = 'V' THEN i.QTDNEG WHEN c.TIPMOV = 'D' THEN -i.QTDNEG ELSE 0 END), 0) AS VENDA_15
-                FROM TGFITE i
-                INNER JOIN TGFCAB c ON c.NUNOTA = i.NUNOTA
+                FROM TGFITE i WITH (NOLOCK)
+                INNER JOIN TGFCAB c WITH (NOLOCK) ON c.NUNOTA = i.NUNOTA
                 WHERE c.STATUSNOTA = 'L'
                   AND c.TIPMOV IN ('V', 'D')
                   AND c.DTNEG >= DATEADD(day, -15, GETDATE())
@@ -67,46 +67,62 @@ def buscar_dados_estoque_vendas():
                 SELECT 
                     i.CODPROD,
                     ISNULL(SUM(CASE WHEN c.TIPMOV = 'V' THEN i.QTDNEG WHEN c.TIPMOV = 'D' THEN -i.QTDNEG ELSE 0 END), 0) AS VENDA_MES_ANT
-                FROM TGFITE i
-                INNER JOIN TGFCAB c ON c.NUNOTA = i.NUNOTA
+                FROM TGFITE i WITH (NOLOCK)
+                INNER JOIN TGFCAB c WITH (NOLOCK) ON c.NUNOTA = i.NUNOTA
                 WHERE c.STATUSNOTA = 'L'
                   AND c.TIPMOV IN ('V', 'D')
                   AND c.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
                   AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
                 GROUP BY i.CODPROD
+            ),
+            EstoqueTotal AS (
+                SELECT 
+                    CODPROD,
+                    ISNULL(SUM(ESTOQUE - RESERVADO), 0) AS ESTOQUE,
+                    ISNULL(MAX(ESTMIN), 0) AS ESTMIN
+                FROM TGFEST WITH (NOLOCK)
+                WHERE CODEMP = 1
+                GROUP BY CODPROD
+            ),
+            UltimoCusto AS (
+                SELECT 
+                    CODPROD,
+                    CUSREP,
+                    CUSGER,
+                    ROW_NUMBER() OVER (PARTITION BY CODPROD ORDER BY DTATUAL DESC, CUSREP DESC) AS RN
+                FROM TGFCUS WITH (NOLOCK)
+                WHERE CODEMP = 1 AND (CUSREP > 0 OR CUSGER > 0)
             )
             SELECT 
                 p.CODPROD, 
                 p.DESCRPROD, 
                 ISNULL(p.CODVOL, 'UN') AS UNIDADE,
-                ISNULL(MAX(p.PESOLIQUIDO), 0) AS PESOLIQUIDO,
-                ISNULL(MAX(p.PESOBRUTO), 0) AS PESOBRUTO,
-                ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0) AS ESTOQUE,
-                ISNULL(MAX(e.ESTMIN), 0) AS ESTMIN,
+                ISNULL(p.PESOBRUTO, 0) AS PESO,
+                ISNULL(e.ESTOQUE, 0) AS ESTOQUE,
+                ISNULL(e.ESTMIN, 0) AS ESTMIN,
                 ISNULL(v15.VENDA_15, 0) AS VENDA_15,
                 CASE 
-                    WHEN ISNULL(MAX(e.ESTMIN), 0) > 0 THEN 
-                        CASE WHEN (ISNULL(MAX(e.ESTMIN), 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0)) > 0 
-                             THEN (ISNULL(MAX(e.ESTMIN), 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0))
+                    WHEN ISNULL(e.ESTMIN, 0) > 0 THEN 
+                        CASE WHEN (ISNULL(e.ESTMIN, 0) - ISNULL(e.ESTOQUE, 0)) > 0 
+                             THEN (ISNULL(e.ESTMIN, 0) - ISNULL(e.ESTOQUE, 0))
                              ELSE 0 END
                     ELSE 
-                        CASE WHEN (ISNULL(v15.VENDA_15, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0)) > 0 
-                             THEN (ISNULL(v15.VENDA_15, 0) - ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0))
+                        CASE WHEN (ISNULL(v15.VENDA_15, 0) - ISNULL(e.ESTOQUE, 0)) > 0 
+                             THEN (ISNULL(v15.VENDA_15, 0) - ISNULL(e.ESTOQUE, 0))
                              ELSE 0 END
                 END AS SUGESTAO_COMPRA,
                 ISNULL(vma.VENDA_MES_ANT, 0) AS VENDA_MES_ANT,
-                ISNULL(MAX(c.CUSREP), 0) AS CUSTO_REPOSICAO,
-                ISNULL(MAX(c.CUSGER), 0) AS CUSTO_GERENCIAL,
-                ISNULL(MAX(prc.VLRVENDA), 0) AS PRECO_VENDA
-            LEFT JOIN TGFPRO p
-            LEFT JOIN TGFEST e ON p.CODPROD = e.CODPROD
+                ISNULL(c.CUSREP, 0) AS CUSTO_REPOSICAO,
+                ISNULL(c.CUSGER, 0) AS CUSTO_GERENCIAL,
+                ISNULL(prc.VLRVENDA, 0) AS PRECO_VENDA
+            FROM TGFPRO p WITH (NOLOCK)
+            LEFT JOIN EstoqueTotal e ON p.CODPROD = e.CODPROD
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
-            LEFT JOIN TGFCUS c ON p.CODPROD = c.CODPROD AND c.CODEMP = 1 AND c.DTATUAL = (SELECT MAX(c2.DTATUAL) FROM TGFCUS c2 WHERE c2.CODPROD = p.CODPROD AND c2.CODEMP = 1)
-            LEFT JOIN TGFEXC prc ON p.CODPROD = prc.CODPROD AND prc.NUTAB = 604
+            LEFT JOIN UltimoCusto c ON p.CODPROD = c.CODPROD AND c.RN = 1
+            LEFT JOIN TGFEXC prc WITH (NOLOCK) ON p.CODPROD = prc.CODPROD AND prc.NUTAB = 604
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
-            GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
             ORDER BY SUGESTAO_COMPRA DESC, v15.VENDA_15 DESC, p.DESCRPROD ASC
         """
 
@@ -118,37 +134,38 @@ def buscar_dados_estoque_vendas():
         if "rows" in response_body and response_body["rows"]:
             produtos = []
             for linha in response_body["rows"]:
-                unidade = linha[2] if len(linha) > 2 and linha[2] else "UN"
-                peso_liq = float(linha[3]) if len(linha) > 3 and linha[3] is not None else 0.0
-                peso_bruto = float(linha[4]) if len(linha) > 4 and linha[4] is not None else 0.0
-                
-                custo_rep = float(linha[10]) if len(linha) > 10 and linha[10] is not None else 0.0
-                custo_ger = float(linha[11]) if len(linha) > 11 and linha[11] is not None else 0.0
+                codigo = linha[0]
+                descricao = linha[1]
+                unidade = linha[2] if linha[2] else "UN"
+                peso = float(linha[3]) if linha[3] is not None else 0.0
+                estoque = float(linha[4]) if linha[4] is not None else 0.0
+                estoque_min = float(linha[5]) if linha[5] is not None else 0.0
+                venda_15 = float(linha[6]) if linha[6] is not None else 0.0
+                sugestao = float(linha[7]) if linha[7] is not None else 0.0
+                venda_ma = float(linha[8]) if linha[8] is not None else 0.0
+                custo_rep = float(linha[9]) if linha[9] is not None else 0.0
+                custo_ger = float(linha[10]) if linha[10] is not None else 0.0
+                preco_venda = float(linha[11]) if linha[11] is not None else 0.0
+
                 custo_principal = custo_rep if custo_rep > 0 else custo_ger
-                
-                preco_venda = float(linha[12]) if len(linha) > 12 and linha[12] is not None else 0.0
 
-                # Identifica o peso unitario da embalagem (ex: 20kg na caixa de frango)
-                peso_unitario = peso_liq if peso_liq > 0 else peso_bruto
-
-                # Se for caixa/fardo e tiver peso cadastrado, calcula os valores por KG
-                if unidade != "KG" and peso_unitario > 0:
-                    preco_kg = preco_venda / peso_unitario
-                    custo_kg = custo_principal / peso_unitario
+                if unidade != "KG" and peso > 0:
+                    preco_kg = preco_venda / peso
+                    custo_kg = custo_principal / peso
                 else:
                     preco_kg = preco_venda
                     custo_kg = custo_principal
 
                 produtos.append({
-                    "codigo": linha[0],
-                    "descricao": linha[1],
+                    "codigo": codigo,
+                    "descricao": descricao,
                     "unidade": unidade,
-                    "peso_unitario": peso_unitario,
-                    "estoque": float(linha[5]) if len(linha) > 5 and linha[5] is not None else 0.0,
-                    "estoque_minimo": float(linha[6]) if len(linha) > 6 and linha[6] is not None else 0.0,
-                    "venda_15d": float(linha[7]) if len(linha) > 7 and linha[7] is not None else 0.0,
-                    "sugestao_compra": float(linha[8]) if len(linha) > 8 and linha[8] is not None else 0.0,
-                    "venda_mes_anterior": float(linha[9]) if len(linha) > 9 and linha[9] is not None else 0.0,
+                    "peso_unitario": peso,
+                    "estoque": estoque,
+                    "estoque_minimo": estoque_min,
+                    "venda_15d": venda_15,
+                    "sugestao_compra": sugestao,
+                    "venda_mes_anterior": venda_ma,
                     "custo": custo_principal,
                     "custo_kg": round(custo_kg, 2),
                     "custo_reposicao": custo_rep,
@@ -164,4 +181,3 @@ def buscar_dados_estoque_vendas():
     except Exception as e:
         print(f"[ERRO SANKHYA_SERVICE]: {str(e)}")
         return []
-```
