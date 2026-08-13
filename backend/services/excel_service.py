@@ -4,14 +4,22 @@ from typing import List, Dict, Any
 import sys
 import os
 
-# Garante que o diretório raiz e o diretório 'backend' estejam no caminho de busca do Python no Render
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+# Adiciona o diretório 'backend' e a raiz do projeto ao PATH
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+root_dir = os.path.dirname(parent_dir)
+
+for path in [current_dir, parent_dir, root_dir]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 try:
-    from config import settings  # type: ignore
+    import config
+    settings = config.settings
+except AttributeError:
+    from config import settings
 except ImportError:
-    from backend.config import settings  # type: ignore
+    from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
