@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 from dotenv import load_dotenv
 
@@ -43,8 +44,33 @@ def autenticar_sankhya():
     raise Exception(f"Falha de autenticação Sankhya: {' | '.join(erros)}")
 
 
+def extrair_peso_da_descricao(descricao):
+    """Extrai o peso em KG a partir da descrição do produto (ex: CX\\20KG, 20X1KG, 15X800GR)."""
+    if not descricao:
+        return 0.0
+
+    desc_upper = descricao.upper()
+
+    # Padrão 1: Ex: 15X800GR ou 20X1KG
+    match_multi = re.search(r'(\d+)\s*[X/]\s*(\d+(?:[\.,]\d+)?)\s*(KG|GR|G)\b', desc_upper)
+    if match_multi:
+        qtd = float(match_multi.group(1))
+        un_peso = float(match_multi.group(2).replace(',', '.'))
+        unidade = match_multi.group(3)
+        if unidade in ['GR', 'G']:
+            un_peso = un_peso / 1000.0
+        return qtd * un_peso
+
+    # Padrão 2: Ex: CX\20KG ou CX/20KG ou 20KG
+    match_kg = re.search(r'(?:CX[\\/]?|FD[\\/]?|\b)(\d+(?:[\.,]\d+)?)\s*KG\b', desc_upper)
+    if match_kg:
+        return float(match_kg.group(1).replace(',', '.'))
+
+    return 0.0
+
+
 def buscar_dados_estoque_vendas():
-    """Consulta de alta performance trazendo Custo de Reposição, Custo Gerencial, Preço de Venda e Cálculo de Preço por KG."""
+    """Consulta de alta performance trazendo Custo e Preço calculados por KG e por Embalagem."""
     try:
         jsessionid, base_endpoint = autenticar_sankhya()
         cookies = {"JSESSIONID": jsessionid}
@@ -74,17 +100,11 @@ def buscar_dados_estoque_vendas():
                   AND c.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
                   AND c.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
                 GROUP BY i.CODPROD
-            ),
-            UltimoPreco AS (
-                SELECT CODPROD, VLRVENDA,
-                       ROW_NUMBER() OVER (PARTITION BY CODPROD ORDER BY DHALTREG DESC) as rn
-                FROM TGFEXC
             )
             SELECT 
                 p.CODPROD, 
                 p.DESCRPROD, 
                 ISNULL(p.CODVOL, 'UN') AS UNIDADE,
-                ISNULL(MAX(p.PESOLIQUIDO), 0) AS PESOLIQUIDO,
                 ISNULL(MAX(p.PESOBRUTO), 0) AS PESOBRUTO,
                 ISNULL(SUM(e.ESTOQUE - e.RESERVADO), 0) AS ESTOQUE,
                 ISNULL(MAX(e.ESTMIN), 0) AS ESTMIN,
@@ -108,7 +128,7 @@ def buscar_dados_estoque_vendas():
             LEFT JOIN Vendas15 v15 ON p.CODPROD = v15.CODPROD
             LEFT JOIN VendasMesAnterior vma ON p.CODPROD = vma.CODPROD
             LEFT JOIN TGFCUS c ON p.CODPROD = c.CODPROD AND c.CODEMP = 1
-            LEFT JOIN UltimoPreco prc ON p.CODPROD = prc.CODPROD AND prc.rn = 1
+            LEFT JOIN TGFEXC prc ON p.CODPROD = prc.CODPROD AND prc.NUTAB = 604
             WHERE ISNULL(p.ATIVO, 'S') = 'S'
               AND ISNULL(p.USOPROD, '') <> 'C'
             GROUP BY p.CODPROD, p.DESCRPROD, p.CODVOL, v15.VENDA_15, vma.VENDA_MES_ANT
@@ -123,20 +143,27 @@ def buscar_dados_estoque_vendas():
         if "rows" in response_body and response_body["rows"]:
             produtos = []
             for linha in response_body["rows"]:
+                codigo = linha[0]
+                descricao = linha[1] or ""
                 unidade = linha[2] if len(linha) > 2 and linha[2] else "UN"
-                peso_liq = float(linha[3]) if len(linha) > 3 and linha[3] is not None else 0.0
-                peso_bruto = float(linha[4]) if len(linha) > 4 and linha[4] is not None else 0.0
+                peso_bruto = float(linha[3]) if len(linha) > 3 and linha[3] is not None else 0.0
                 
-                custo_rep = float(linha[10]) if len(linha) > 10 and linha[10] is not None else 0.0
-                custo_ger = float(linha[11]) if len(linha) > 11 and linha[11] is not None else 0.0
+                estoque = float(linha[4]) if len(linha) > 4 and linha[4] is not None else 0.0
+                estoque_minimo = float(linha[5]) if len(linha) > 5 and linha[5] is not None else 0.0
+                venda_15d = float(linha[6]) if len(linha) > 6 and linha[6] is not None else 0.0
+                sugestao_compra = float(linha[7]) if len(linha) > 7 and linha[7] is not None else 0.0
+                venda_mes_anterior = float(linha[8]) if len(linha) > 8 and linha[8] is not None else 0.0
+                
+                custo_rep = float(linha[9]) if len(linha) > 9 and linha[9] is not None else 0.0
+                custo_ger = float(linha[10]) if len(linha) > 10 and linha[10] is not None else 0.0
                 custo_principal = custo_rep if custo_rep > 0 else custo_ger
                 
-                preco_venda = float(linha[12]) if len(linha) > 12 and linha[12] is not None else 0.0
+                preco_venda = float(linha[11]) if len(linha) > 11 and linha[11] is not None else 0.0
 
-                # Identifica o peso unitário da embalagem
-                peso_unitario = peso_liq if peso_liq > 0 else peso_bruto
+                # Identifica o peso unitário (1º peso do cadastro, 2º extrator da descrição)
+                peso_unitario = peso_bruto if peso_bruto > 0 else extrair_peso_da_descricao(descricao)
 
-                # Se for vendido em caixa/fardo/unidade e tiver peso cadastrado, calcula o valor por KG
+                # Se a embalagem for Caixa/Fardo e tiver peso, calcula o valor por KG
                 if unidade != "KG" and peso_unitario > 0:
                     preco_kg = preco_venda / peso_unitario
                     custo_kg = custo_principal / peso_unitario
@@ -145,15 +172,15 @@ def buscar_dados_estoque_vendas():
                     custo_kg = custo_principal
 
                 produtos.append({
-                    "codigo": linha[0],
-                    "descricao": linha[1],
+                    "codigo": codigo,
+                    "descricao": descricao,
                     "unidade": unidade,
                     "peso_unitario": peso_unitario,
-                    "estoque": float(linha[5]) if len(linha) > 5 and linha[5] is not None else 0.0,
-                    "estoque_minimo": float(linha[6]) if len(linha) > 6 and linha[6] is not None else 0.0,
-                    "venda_15d": float(linha[7]) if len(linha) > 7 and linha[7] is not None else 0.0,
-                    "sugestao_compra": float(linha[8]) if len(linha) > 8 and linha[8] is not None else 0.0,
-                    "venda_mes_anterior": float(linha[9]) if len(linha) > 9 and linha[9] is not None else 0.0,
+                    "estoque": estoque,
+                    "estoque_minimo": estoque_minimo,
+                    "venda_15d": venda_15d,
+                    "sugestao_compra": sugestao_compra,
+                    "venda_mes_anterior": venda_mes_anterior,
                     "custo": custo_principal,
                     "custo_kg": round(custo_kg, 2),
                     "custo_reposicao": custo_rep,
