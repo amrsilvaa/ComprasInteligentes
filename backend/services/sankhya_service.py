@@ -77,12 +77,18 @@ def buscar_dados_estoque_vendas():
             ),
 EstoqueTotal AS (
     SELECT 
-        CODPROD,
-        ISNULL(SUM(ESTOQUE - RESERVADO), 0) AS ESTOQUE,
-        ISNULL(MAX(ESTMIN), 0) AS ESTMIN
-    FROM TGFEST WITH (NOLOCK)
-    WHERE CODEMP = 1
-    GROUP BY CODPROD
+        e.CODPROD,
+        -- Se o estoque for fruto de remessa/reserva (TOP 226), desconsidera
+        ISNULL(SUM(
+            CASE 
+                WHEN e.RESERVADO >= e.ESTOQUE THEN 0 
+                ELSE (e.ESTOQUE - e.RESERVADO) 
+            END
+        ), 0) AS ESTOQUE,
+        ISNULL(MAX(e.ESTMIN), 0) AS ESTMIN
+    FROM TGFEST e WITH (NOLOCK)
+    WHERE e.CODEMP = 1
+    GROUP BY e.CODPROD
 ),
             UltimoCusto AS (
                 SELECT 
