@@ -134,6 +134,7 @@ class SankhyaAPIService:
     def carregar_dados_estoque_vendas(self) -> List[Dict[str, Any]]:
         """
         Executa a consulta de estoque e vendas via serviço de consulta (DbExplorerSP.executeQuery).
+        Filtra apenas produtos ATIVOS e de REVENDA (USOCOM = 'R' ou TIPITEM = '00').
         """
         logger.info("=== INICIANDO carregar_dados_estoque_vendas ===")
         if not self.jsessionid and not self.login():
@@ -141,7 +142,6 @@ class SankhyaAPIService:
 
         query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
 
-        # Consulta SQL com Custo de Reposição (CUSREP) e Preço de Venda Ordenado por NUTAB
         sql_query = """
         WITH Vendas15D AS (
             SELECT 
@@ -210,6 +210,7 @@ class SankhyaAPIService:
         LEFT JOIN CustoReposicao CUS ON PRO.CODPROD = CUS.CODPROD
         LEFT JOIN PrecoVenda EXC ON PRO.CODPROD = EXC.CODPROD
         WHERE PRO.ATIVO = 'S'
+          AND (PRO.USOCOM = 'R' OR PRO.TIPITEM = '00')
         ORDER BY PRO.DESCRPROD
         """
 
@@ -279,10 +280,14 @@ class SankhyaAPIService:
                 if item:
                     produtos.append(self._normalizar_produto(item))
             
-            # Filtra produtos para exibir na lista
-            produtos_com_estoque = [p for p in produtos if p.get("estoque", 0) > 0 or p.get("venda_15d", 0) > 0]
-            logger.info(f"Carregados {len(produtos_com_estoque)} de {len(produtos)} produtos.")
-            return produtos_com_estoque
+            # Filtra apenas produtos de revenda que possuem estoque, vendas ou necessidade de reposição
+            produtos_filtrados = [
+                p for p in produtos 
+                if p.get("sugestao_compra", 0) > 0 or p.get("venda_15d", 0) > 0 or p.get("venda_mes_anterior", 0) > 0
+            ]
+            
+            logger.info(f"Carregados {len(produtos_filtrados)} produtos filtrados exclusivamente para Revenda.")
+            return produtos_filtrados
 
         except Exception as e:
             logger.error(f"Erro ao consultar estoque/vendas via API Sankhya: {str(e)}")
@@ -291,7 +296,7 @@ class SankhyaAPIService:
 
 def buscar_dados_estoque_vendas() -> List[Dict[str, Any]]:
     """
-    Função principal chamada pelo FastAPI (app.py).
+    Função principal chamada pelo FastAPI.
     """
     service = SankhyaAPIService()
     return service.carregar_dados_estoque_vendas()
