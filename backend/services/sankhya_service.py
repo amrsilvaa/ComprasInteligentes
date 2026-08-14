@@ -70,7 +70,7 @@ class SankhyaAPIService:
             "estoque_disponivel": disponivel_valor,
             "estoque_minimo": 0.0,
             
-            # Mapeado para ambos os formatos (singular e plural)
+            # Mapeamento duplo (singular e plural) para garantir leitura no front-end
             "venda_15d": venda_15d_valor,
             "vendas_15d": venda_15d_valor,
             "venda_mes_anterior": venda_mes_anterior_valor,
@@ -123,7 +123,7 @@ class SankhyaAPIService:
 
         query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
 
-        # Query SQL com LEFT JOINs ajustados e filtro flexível
+        # SQL ajustada: PRO.USOCOM = 'R' garante apenas produtos de Revenda
         sql_query = """
         WITH V15 AS (
             SELECT 
@@ -194,6 +194,7 @@ class SankhyaAPIService:
         ) EXC ON EXC.CODPROD = PRO.CODPROD
 
         WHERE PRO.ATIVO = 'S'
+          AND PRO.USOCOM = 'R'
         ORDER BY PRO.DESCRPROD
         """
 
@@ -230,7 +231,7 @@ class SankhyaAPIService:
                 if item:
                     produtos.append(self._normalizar_produto(item))
 
-            logger.info(f"Retornados {len(produtos)} produtos com a quantidade exata de vendas.")
+            logger.info(f"Retornados {len(produtos)} produtos de revenda com a quantidade de vendas.")
             return produtos
 
         except Exception as e:
