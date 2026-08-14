@@ -9,6 +9,20 @@
 <body class="bg-gray-100 p-6">
   <div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg">
     
+    <!-- Botões Superiores (Ações do Usuário) -->
+    <div class="flex justify-end gap-3 mb-6">
+      <button 
+        onclick="cadastrarFaceID()" 
+        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 color-white text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-2">
+        👤 Cadastrar Face ID neste iPhone/PC
+      </button>
+      <a 
+        href="/logout" 
+        class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center justify-center">
+        Sair
+      </a>
+    </div>
+
     <!-- Header e Busca -->
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
       <div>
@@ -52,20 +66,28 @@
   <script>
     let todosProdutos = [];
 
+    // Tenta carregar pela rota do Sankhya ou fallback para a rota unificada de estoque
     async function carregarProdutos() {
       const tbody = document.getElementById('tableBody');
       try {
-        const response = await fetch('http://localhost:8000/api/sankhya');
-        const data = await response.json();
+        // Chamada relativa ao mesmo domínio onde a aplicação está rodando (Render)
+        let response = await fetch('/api/sankhya');
+        
+        if (!response.ok) {
+          response = await fetch('/api/estoque');
+        }
 
-        if (data.sucesso && Array.isArray(data.produtos)) {
-          todosProdutos = data.produtos;
+        const data = await response.json();
+        const listaProdutos = data.produtos || (Array.isArray(data) ? data : []);
+
+        if ((data.sucesso || response.ok) && Array.isArray(listaProdutos)) {
+          todosProdutos = listaProdutos;
           renderizarTabela(todosProdutos);
         } else {
           tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-red-500 font-semibold">Erro ao carregar produtos. Verifique a API.</td></tr>`;
         }
       } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-red-500 font-semibold">Falha na conexão com o backend (http://localhost:8000).</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-red-500 font-semibold">Falha na conexão com o servidor de dados.</td></tr>`;
       }
     }
 
@@ -78,20 +100,27 @@
       }
 
       tbody.innerHTML = produtos.map(p => {
-        const precisaComprar = p.sugestao_compra > 0;
+        const codigo = p.codigo || p.codprod || '-';
+        const descricao = p.descricao || p.produto || '-';
+        const unidade = p.unidade || p.UNIDADE || 'UN';
+        const estoque = Number(p.estoque ?? p.estoque_disponivel ?? 0);
+        const estoqueMin = Number(p.estoque_minimo ?? p.estoque_meta ?? 0);
+        const sugestao = Number(p.sugestao_compra ?? 0);
+
+        const precisaComprar = sugestao > 0 || (p.status && String(p.status).toLowerCase().includes('comprar'));
         const badgeStatus = precisaComprar
           ? `<span class="bg-red-100 text-red-800 font-bold px-3 py-1 rounded-full text-xs">REPOR</span>`
           : `<span class="bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full text-xs">OK</span>`;
 
         return `
           <tr class="hover:bg-blue-50 transition-colors ${precisaComprar ? 'bg-red-50/40' : ''}">
-            <td class="p-3 font-mono text-gray-600">${p.codigo}</td>
-            <td class="p-3 font-medium text-gray-900">${p.descricao}</td>
-            <td class="p-3 text-gray-500">${p.unidade}</td>
-            <td class="p-3 text-right font-semibold text-gray-800">${p.estoque.toLocaleString('pt-BR')}</td>
-            <td class="p-3 text-right text-gray-500">${p.estoque_minimo.toLocaleString('pt-BR')}</td>
+            <td class="p-3 font-mono text-gray-600">${codigo}</td>
+            <td class="p-3 font-medium text-gray-900">${descricao}</td>
+            <td class="p-3 text-gray-500">${unidade}</td>
+            <td class="p-3 text-right font-semibold text-gray-800">${estoque.toLocaleString('pt-BR')}</td>
+            <td class="p-3 text-right text-gray-500">${estoqueMin.toLocaleString('pt-BR')}</td>
             <td class="p-3 text-right font-bold ${precisaComprar ? 'text-red-600' : 'text-gray-700'}">
-              ${p.sugestao_compra.toLocaleString('pt-BR')}
+              ${sugestao.toLocaleString('pt-BR')}
             </td>
             <td class="p-3 text-center">${badgeStatus}</td>
           </tr>
@@ -102,29 +131,17 @@
     // Filtro de Busca em Tempo Real
     document.getElementById('searchInput').addEventListener('input', (e) => {
       const termo = e.target.value.toLowerCase();
-      const filtrados = todosProdutos.filter(p => 
-        p.descricao.toLowerCase().includes(termo) || 
-        String(p.codigo).includes(termo)
-      );
+      const filtrados = todosProdutos.filter(p => {
+        const desc = String(p.descricao || p.produto || '').toLowerCase();
+        const cod = String(p.codigo || p.codprod || '').toLowerCase();
+        return desc.includes(termo) || cod.includes(termo);
+      });
       renderizarTabela(filtrados);
     });
 
-    carregarProdutos();
-  </script>
-</body>
-</html>
-<div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px;">
-    <button onclick="cadastrarFaceID()" style="padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
-        👤 Cadastrar Face ID neste iPhone/PC
-    </button>
-    <a href="/logout" style="padding: 8px 16px; background: #dc2626; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">
-        Sair
-    </a>
-</div>
-
-<script>
-async function cadastrarFaceID() {
-    try {
+    // Função de Autenticação WebAuthn (Face ID)
+    async function cadastrarFaceID() {
+      try {
         const resOptions = await fetch("/api/webauthn/register-options");
         const options = await resOptions.json();
 
@@ -134,34 +151,39 @@ async function cadastrarFaceID() {
         const credential = await navigator.credentials.create({ publicKey: options });
 
         const regData = {
-            id: credential.id,
-            rawId: arrayBufferToBase64(credential.rawId),
-            type: credential.type,
-            response: {
-                attestationObject: arrayBufferToBase64(credential.response.attestationObject),
-                clientDataJSON: arrayBufferToBase64(credential.response.clientDataJSON)
-            }
+          id: credential.id,
+          rawId: arrayBufferToBase64(credential.rawId),
+          type: credential.type,
+          response: {
+            attestationObject: arrayBufferToBase64(credential.response.attestationObject),
+            clientDataJSON: arrayBufferToBase64(credential.response.clientDataJSON)
+          }
         };
 
         const verifyRes = await fetch("/api/webauthn/register-verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(regData)
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(regData)
         });
 
         const data = await verifyRes.json();
-        alert(data.message);
-    } catch (err) {
+        alert(data.message || "Cadastro realizado com sucesso!");
+      } catch (err) {
         alert("Erro ou cancelamento do cadastro de Face ID.");
+      }
     }
-}
 
-function arrayBufferToBase64(buffer) {
-    let binary = '';
-    let bytes = new Uint8Array(buffer);
-    for (let i = 0; i < bytes.byteLength; i++) {
+    function arrayBufferToBase64(buffer) {
+      let binary = '';
+      let bytes = new Uint8Array(buffer);
+      for (let i = 0; i < bytes.byteLength; i++) {
         binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
     }
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
-</script>
+
+    // Inicializa a busca dos dados ao carregar
+    carregarProdutos();
+  </script>
+</body>
+</html>

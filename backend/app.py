@@ -2,10 +2,9 @@ import os
 import json
 import logging
 from pathlib import Path
-from flask import Flask, jsonify, render_template, request, session, redirect, url_for, send_from_directory
+from flask import Flask, jsonify, render_template, request, session, redirect, url_for
 from dotenv import load_dotenv
 
-# Import ajustado usando o pacote backend
 from backend.services.sankhya_service import buscar_dados_estoque_vendas
 
 # WebAuthn para Face ID / Biometria
@@ -16,6 +15,8 @@ from webauthn import (
     verify_authentication_response,
 )
 from webauthn.helpers.structs import (
+    PublicKeyCredentialRpEntity,
+    PublicKeyCredentialUserEntity,
     UserVerificationRequirement,
     AuthenticatorSelectionCriteria,
     AuthenticatorAttachment,
@@ -27,17 +28,18 @@ load_dotenv(dotenv_path=env_path)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Mapeia dinamicamente a pasta frontend no diretório raiz do projeto
-BASE_DIR = Path(__file__).resolve().parent.parent
-FRONTEND_DIR = BASE_DIR / "frontend"
-
-app = Flask(__name__, static_folder=str(FRONTEND_DIR), template_folder=str(FRONTEND_DIR))
+app = Flask(__name__, static_folder="../frontend", template_folder="../frontend")
 app.secret_key = os.getenv("SECRET_KEY", "chave-secreta-sankhya-compras-2026")
 
+# Usuário e Senha Padrão de Acesso (pode ser configurado no .env)
 ADMIN_USER = os.getenv("APP_USER", "admin")
 ADMIN_PASS = os.getenv("APP_PASSWORD", "123456")
 
+# Nome de exibição do App para a chave de segurança
+RP_ID = os.getenv("RP_ID", "comprasinteligentes.onrender.com")  # Ou 'localhost' em dev
 RP_NAME = "Compras Inteligentes"
+
+# Banco em memória/arquivo simples para credenciais salvas do Face ID
 CREDENTIALS_FILE = Path(__file__).resolve().parent / "user_credentials.json"
 
 
@@ -59,6 +61,7 @@ def save_credentials(data):
 db_credentials = load_credentials()
 
 
+# Middleware de Checagem de Autenticação
 def login_required(f):
     from functools import wraps
     @wraps(f)
@@ -75,7 +78,7 @@ def login_required(f):
 def login_page():
     if session.get("logged_in"):
         return redirect(url_for("index"))
-    return send_from_directory(FRONTEND_DIR, "login.html")
+    return app.send_static_file("login.html")
 
 
 @app.route("/api/login/password", methods=["POST"])
@@ -113,7 +116,7 @@ def webauthn_register_options():
         user_display_name="Usuário de Compras",
         authenticator_selection=AuthenticatorSelectionCriteria(
             user_verification=UserVerificationRequirement.PREFERRED,
-            authenticator_attachment=AuthenticatorAttachment.PLATFORM
+            authenticator_attachment=AuthenticatorAttachment.PLATFORM  # Face ID / Touch ID integrado
         ),
     )
     
@@ -126,7 +129,7 @@ def webauthn_register_options():
 def webauthn_register_verify():
     challenge_hex = session.get("webauthn_challenge")
     if not challenge_hex:
-        return jsonify({"success": False, "message": "Desafio expirado"}), 400
+        return jsonify({"success": False, "message": "Desafio de segurança expirado"}), 400
 
     body = request.json
     try:
@@ -147,7 +150,7 @@ def webauthn_register_verify():
         
         return jsonify({"success": True, "message": "Face ID / Biometria cadastrado com sucesso!"})
     except Exception as e:
-        logger.error(f"Erro WebAuthn: {e}")
+        logger.error(f"Erro ao verificar registro WebAuthn: {e}")
         return jsonify({"success": False, "message": str(e)}), 400
 
 
@@ -170,6 +173,7 @@ def webauthn_login_verify():
     body = request.json
     cred_id = body.get("id")
 
+    # Localizar credencial cadastrada
     target_user = None
     target_cred = None
     for uname, cred in db_credentials.items():
@@ -179,7 +183,7 @@ def webauthn_login_verify():
             break
 
     if not target_cred:
-        return jsonify({"success": False, "message": "Face ID não cadastrado neste sistema."}), 400
+        return jsonify({"success": False, "message": "Dispositivo ou Face ID não reconhecido neste servidor."}), 400
 
     try:
         verification = verify_authentication_response(
@@ -202,17 +206,12 @@ def webauthn_login_verify():
         return jsonify({"success": False, "message": "Falha no reconhecimento do Face ID."}), 400
 
 
-# --- ROTAS PRINCIPAIS ---
+# --- ROTAS PRINCIPAIS PROTEGIDAS ---
 
 @app.route("/")
 @login_required
 def index():
-    return send_from_directory(FRONTEND_DIR, "index.html")
-
-
-@app.route("/<path:path>")
-def serve_static(path):
-    return send_from_directory(FRONTEND_DIR, path)
+    return app.send_static_file("index.html")
 
 
 @app.route("/api/estoque", methods=["GET"])
