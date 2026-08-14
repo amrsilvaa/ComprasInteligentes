@@ -62,7 +62,7 @@ class SankhyaAPIService:
         
         sugestao = max(0.0, venda_15d_valor - estoque_valor)
 
-        produto = {
+        return {
             "codigo": codigo,
             "descricao": descricao,
             "unidade": unidade if unidade else "UN",
@@ -77,8 +77,6 @@ class SankhyaAPIService:
             "status": "REPOR" if sugestao > 0 else "OK",
         }
 
-        return produto
-
     def __init__(self):
         self.base_url = SANKHYA_URL
         self.usuario = SANKHYA_USUARIO
@@ -88,7 +86,6 @@ class SankhyaAPIService:
 
     def login(self) -> bool:
         login_url = f"{self.base_url}/service.sbr?serviceName=MobileLoginSP.login&outputType=json"
-        
         payload = {
             "serviceName": "MobileLoginSP.login",
             "requestBody": {
@@ -102,28 +99,24 @@ class SankhyaAPIService:
             response.raise_for_status()
             data = response.json()
 
-            status = data.get("status")
-            if status == "1":
+            if data.get("status") == "1":
                 self.jsessionid = data.get("responseBody", {}).get("jsessionid", {}).get("$")
                 logger.info("Login no Sankhya realizado com sucesso!")
                 return True
             else:
-                status_msg = data.get("statusMessage", "Erro de autenticação")
-                logger.error(f"Falha no login Sankhya: {status_msg}")
+                logger.error(f"Falha no login Sankhya: {data.get('statusMessage')}")
                 return False
-
         except Exception as e:
             logger.error(f"Erro ao conectar na API do Sankhya: {str(e)}")
             return False
 
     def carregar_dados_estoque_vendas(self) -> List[Dict[str, Any]]:
-        logger.info("=== INICIANDO carregar_dados_estoque_vendas ===")
         if not self.jsessionid and not self.login():
             raise Exception("Não foi possível autenticar na API do Sankhya.")
 
         query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
 
-        # SQL Direta e Otimizada baseada na query do seu Gadget do Sankhya
+        # SQL direta baseada no Gadget do Sankhya
         sql_query = """
         SELECT 
             PRO.CODPROD,
@@ -131,8 +124,8 @@ class SankhyaAPIService:
             PRO.CODVOL AS UNIDADEMEDIDA,
             ISNULL(EST.ESTOQUE, 0) - ISNULL(EST.RESERVADO, 0) AS ESTOQUE,
             ISNULL(EST.ESTMIN, 0) AS ESTOQUE_MINIMO,
-            ISNULL(V15.QTD, 0) AS VENDAS_15D,
-            ISNULL(VMA.QTD, 0) AS VENDAS_MES_ANTERIOR,
+            0 AS VENDAS_15D,
+            0 AS VENDAS_MES_ANTERIOR,
             ISNULL(CUS.CUSREP, 0) AS PRECO_CUSTO,
             ISNULL(EXC.VLRVENDA, 0) AS PRECO_VENDA
         FROM TGFPRO PRO
@@ -147,25 +140,6 @@ class SankhyaAPIService:
             WHERE TIPO = 'P'
             GROUP BY CODPROD
         ) EST ON EST.CODPROD = PRO.CODPROD
-
-        LEFT JOIN (
-            SELECT ITE.CODPROD, SUM(ITE.QTDNEG) AS QTD
-            FROM TGFCAB CAB
-            INNER JOIN TGFITE ITE ON CAB.NUNOTA = ITE.NUNOTA
-            WHERE CAB.DTNEG >= DATEADD(day, -15, CAST(GETDATE() AS DATE))
-              AND CAB.STATUSNOTA = 'L'
-            GROUP BY ITE.CODPROD
-        ) V15 ON V15.CODPROD = PRO.CODPROD
-
-        LEFT JOIN (
-            SELECT ITE.CODPROD, SUM(ITE.QTDNEG) AS QTD
-            FROM TGFCAB CAB
-            INNER JOIN TGFITE ITE ON CAB.NUNOTA = ITE.NUNOTA
-            WHERE CAB.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
-              AND CAB.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
-              AND CAB.STATUSNOTA = 'L'
-            GROUP BY ITE.CODPROD
-        ) VMA ON VMA.CODPROD = PRO.CODPROD
 
         LEFT JOIN (
             SELECT CODPROD, CUSREP
@@ -201,60 +175,31 @@ class SankhyaAPIService:
             data = response.json()
 
             if data.get("status") != "1":
-                status_msg = data.get("statusMessage", "Erro na consulta Sankhya")
-                logger.error(f"Erro Sankhya API: {status_msg}")
+                logger.error(f"Erro Sankhya API: {data.get('statusMessage')}")
                 return []
 
             response_body = data.get("responseBody", {})
-            
-            fields = []
-            if isinstance(response_body, dict):
-                fields_meta = response_body.get("fieldsMetadata", [])
-                if isinstance(fields_meta, list):
-                    for field in fields_meta:
-                        if isinstance(field, dict):
-                            fields.append(field.get("name"))
-                        elif isinstance(field, str):
-                            fields.append(field)
-            
-            rows = []
-            if isinstance(response_body, dict):
-                rows_obj = response_body.get("rows", [])
-                if isinstance(rows_obj, list):
-                    rows = rows_obj
-            elif isinstance(response_body, list):
-                rows = response_body
+            fields = [f.get("name") if isinstance(f, dict) else f for f in response_body.get("fieldsMetadata", [])]
+            rows = response_body.get("rows", [])
             
             produtos = []
-            
             for row in rows:
                 item = {}
-                if isinstance(row, dict):
-                    values = row.get("localFields", {}).get("localField", [])
-                    if isinstance(values, dict):
-                        values = [values]
-                    for idx, field_name in enumerate(fields):
-                        if field_name is None or idx >= len(values):
-                            continue
+                values = row.get("localFields", {}).get("localField", []) if isinstance(row, dict) else row
+                if isinstance(values, dict):
+                    values = [values]
+                for idx, field_name in enumerate(fields):
+                    if field_name and idx < len(values):
                         val_obj = values[idx]
-                        val = val_obj.get("$") if isinstance(val_obj, dict) else val_obj
-                        item[field_name] = val
-                
-                elif isinstance(row, list):
-                    for idx, field_name in enumerate(fields):
-                        if field_name is None or idx >= len(row):
-                            continue
-                        val = row[idx]
-                        item[field_name] = val
-                
+                        item[field_name] = val_obj.get("$") if isinstance(val_obj, dict) else val_obj
                 if item:
                     produtos.append(self._normalizar_produto(item))
-            
-            logger.info(f"Sucesso! Total de produtos de revenda retornados: {len(produtos)}")
+
+            logger.info(f"Retornados {len(produtos)} produtos de revenda.")
             return produtos
 
         except Exception as e:
-            logger.error(f"Erro ao consultar estoque/vendas via API Sankhya: {str(e)}")
+            logger.error(f"Erro ao consultar estoque via API Sankhya: {str(e)}")
             raise e
 
 
