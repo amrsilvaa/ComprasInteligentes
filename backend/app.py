@@ -31,12 +31,12 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder="../frontend", template_folder="../frontend")
 app.secret_key = os.getenv("SECRET_KEY", "chave-secreta-sankhya-compras-2026")
 
-# Usuário e Senha Padrão de Acesso (pode ser configurado no .env)
+# Usuário e Senha Padrão de Acesso (configurável no .env)
 ADMIN_USER = os.getenv("APP_USER", "admin")
 ADMIN_PASS = os.getenv("APP_PASSWORD", "123456")
 
 # Nome de exibição do App para a chave de segurança
-RP_ID = os.getenv("RP_ID", "comprasinteligentes.onrender.com")  # Ou 'localhost' em dev
+RP_ID = os.getenv("RP_ID", "comprasinteligentes.onrender.com")
 RP_NAME = "Compras Inteligentes"
 
 # Banco em memória/arquivo simples para credenciais salvas do Face ID
@@ -116,7 +116,7 @@ def webauthn_register_options():
         user_display_name="Usuário de Compras",
         authenticator_selection=AuthenticatorSelectionCriteria(
             user_verification=UserVerificationRequirement.PREFERRED,
-            authenticator_attachment=AuthenticatorAttachment.PLATFORM  # Face ID / Touch ID integrado
+            authenticator_attachment=AuthenticatorAttachment.PLATFORM
         ),
     )
     
@@ -173,7 +173,6 @@ def webauthn_login_verify():
     body = request.json
     cred_id = body.get("id")
 
-    # Localizar credencial cadastrada
     target_user = None
     target_cred = None
     for uname, cred in db_credentials.items():
@@ -223,6 +222,18 @@ def get_estoque():
     except Exception as e:
         logger.error(f"Erro na rota /api/estoque: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
+# Rota adicional exigida pelo index.html
+@app.route("/api/sankhya", methods=["GET"])
+@login_required
+def get_sankhya():
+    try:
+        dados = buscar_dados_estoque_vendas()
+        return jsonify({"sucesso": True, "produtos": dados})
+    except Exception as e:
+        logger.error(f"Erro na rota /api/sankhya: {str(e)}")
+        return jsonify({"sucesso": False, "error": str(e)}), 500
 
 
 if __name__ == "__main__":

@@ -47,10 +47,10 @@ class SankhyaAPIService:
         descricao = cls._first_value(item, "DESCRPROD", "descricao", "descrprod")
         unidade = cls._first_value(item, "UNIDADEMEDIDA", "unidade", "codvol", "CODVOL")
         disponivel = cls._first_value(item, "DISPONIVEL", "ESTOQUE", "estoque")
-        venda_15d = cls._first_value(item, "VENDAS_15D", "vendas_15d")
-        venda_mes_anterior = cls._first_value(item, "VENDAS_MES_ANTERIOR", "vendas_mes_anterior")
-        custo = cls._first_value(item, "PRECO_CUSTO", "CUSTO_UNITARIO", "custo")
-        preco_venda = cls._first_value(item, "PRECO_VENDA", "preco_venda")
+        venda_15d = cls._first_value(item, "VENDAS_15D", "vendas_15d", "venda_15d")
+        venda_mes_anterior = cls._first_value(item, "VENDAS_MES_ANTERIOR", "vendas_mes_anterior", "venda_mes_anterior")
+        custo = cls._first_value(item, "PRECO_CUSTO", "CUSTO_UNITARIO", "custo", "CUSREP")
+        preco_venda = cls._first_value(item, "PRECO_VENDA", "preco_venda", "VLRVENDA")
 
         disponivel_valor = cls._coerce_number(disponivel)
         venda_15d_valor = cls._coerce_number(venda_15d)
@@ -58,7 +58,7 @@ class SankhyaAPIService:
         custo_valor = cls._coerce_number(custo)
         preco_venda_valor = cls._coerce_number(preco_venda)
 
-        # Regra de Sugestão de Compra baseada na Quantidade de Venda de 15 dias vs Estoque Disponível
+        # Regra de Sugestão de Compra
         sugestao = max(0.0, venda_15d_valor - disponivel_valor)
         status = "REPOR" if sugestao > 0 else "OK"
 
@@ -69,9 +69,16 @@ class SankhyaAPIService:
             "estoque": disponivel_valor,
             "estoque_disponivel": disponivel_valor,
             "estoque_minimo": 0.0,
+            
+            # Mapeado para ambos os formatos (singular e plural)
             "venda_15d": venda_15d_valor,
+            "vendas_15d": venda_15d_valor,
             "venda_mes_anterior": venda_mes_anterior_valor,
+            "vendas_mes_ant": venda_mes_anterior_valor,
+            "vendas_mes_anterior": venda_mes_anterior_valor,
+            
             "custo": custo_valor,
+            "custo_un": custo_valor,
             "preco_venda": preco_venda_valor,
             "sugestao_compra": sugestao,
             "status": status,
@@ -116,7 +123,7 @@ class SankhyaAPIService:
 
         query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
 
-        # SQL corrigida para somar EXCLUSIVAMENTE a quantidade física de Vendas (TIPMOV = 'V')
+        # Query SQL com LEFT JOINs ajustados e filtro flexível
         sql_query = """
         WITH V15 AS (
             SELECT 
@@ -150,14 +157,11 @@ class SankhyaAPIService:
             (ISNULL(EST.ESTOQUE, 0) - ISNULL(EST.RESERVADO, 0)) AS DISPONIVEL,
             ISNULL(V15.QTD, 0) AS VENDAS_15D,
             ISNULL(VMA.QTD, 0) AS VENDAS_MES_ANTERIOR,
-            VEN.APELIDO AS SEPARADOR,
             ISNULL(CUS.CUSREP, 0) AS PRECO_CUSTO,
-            ((ISNULL(EST.ESTOQUE, 0) - ISNULL(EST.RESERVADO, 0)) * ISNULL(CUS.CUSREP, 0)) AS TOTAL_DISP_CUSTO,
-            ISNULL(EXC.VLRVENDA, 0) AS PRECO_VENDA,
-            ((ISNULL(EST.ESTOQUE, 0) - ISNULL(EST.RESERVADO, 0)) * ISNULL(EXC.VLRVENDA, 0)) AS TOTAL_DISP_VENDA
+            ISNULL(EXC.VLRVENDA, 0) AS PRECO_VENDA
         FROM TGFPRO PRO
 
-        INNER JOIN (
+        LEFT JOIN (
             SELECT 
                 CODPROD,
                 SUM(ESTOQUE) AS ESTOQUE,
@@ -169,8 +173,6 @@ class SankhyaAPIService:
 
         LEFT JOIN V15 ON V15.CODPROD = PRO.CODPROD
         LEFT JOIN VMA ON VMA.CODPROD = PRO.CODPROD
-
-        LEFT JOIN TGFVEN VEN ON VEN.CODVEND = PRO.AD_CODVEND
 
         LEFT JOIN (
             SELECT CODPROD, CUSREP
@@ -191,8 +193,7 @@ class SankhyaAPIService:
             ) TAB_TEMP WHERE RN = 1
         ) EXC ON EXC.CODPROD = PRO.CODPROD
 
-        WHERE PRO.ATIVO = 'S' 
-          AND PRO.AD_MOBILIDADE = 'S'
+        WHERE PRO.ATIVO = 'S'
         ORDER BY PRO.DESCRPROD
         """
 
