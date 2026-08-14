@@ -58,8 +58,9 @@ class SankhyaAPIService:
         custo_valor = cls._coerce_number(custo)
         preco_venda_valor = cls._coerce_number(preco_venda)
 
-        # Regra da Sugestão de Compra
+        # Regra de Sugestão de Compra e Status
         sugestao = max(0.0, venda_15d_valor - disponivel_valor)
+        status = "REPOR" if sugestao > 0 else "OK"
 
         return {
             "codigo": codigo,
@@ -73,7 +74,7 @@ class SankhyaAPIService:
             "custo": custo_valor,
             "preco_venda": preco_venda_valor,
             "sugestao_compra": sugestao,
-            "status": "REPOR" if sugestao > 0 else "OK",
+            "status": status,
         }
 
     def __init__(self):
@@ -115,7 +116,6 @@ class SankhyaAPIService:
 
         query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
 
-        # SQL do seu Gadget + Subconsultas leves de Vendas
         sql_query = """
         WITH V15 AS (
             SELECT 
