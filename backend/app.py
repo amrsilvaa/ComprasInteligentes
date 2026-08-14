@@ -5,7 +5,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, session, redirect, url_for
 from dotenv import load_dotenv
 
-from services.sankhya_service import buscar_dados_estoque_vendas
+from backend.services.sankhya_service import buscar_dados_estoque_vendas
 
 # WebAuthn para Face ID / Biometria
 from webauthn import (
