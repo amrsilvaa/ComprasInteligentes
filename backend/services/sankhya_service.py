@@ -46,35 +46,27 @@ class SankhyaAPIService:
         codigo = cls._first_value(item, "CODPROD", "codigo", "codprod")
         descricao = cls._first_value(item, "DESCRPROD", "descricao", "descrprod")
         unidade = cls._first_value(item, "UNIDADEMEDIDA", "unidade", "codvol", "CODVOL")
-        estoque = cls._first_value(item, "ESTOQUE", "DISPONIVEL", "SALDO", "estoque")
-        estoque_minimo = cls._first_value(item, "ESTOQUE_MINIMO", "ESTMIN", "estoque_minimo")
-        venda_15d = cls._first_value(item, "VENDAS_15D", "vendas_15d")
-        venda_mes_anterior = cls._first_value(item, "VENDAS_MES_ANTERIOR", "vendas_mes_anterior")
+        disponivel = cls._first_value(item, "DISPONIVEL", "ESTOQUE", "estoque")
         custo = cls._first_value(item, "PRECO_CUSTO", "CUSTO_UNITARIO", "custo")
         preco_venda = cls._first_value(item, "PRECO_VENDA", "preco_venda")
 
-        estoque_valor = cls._coerce_number(estoque)
-        estoque_minimo_valor = cls._coerce_number(estoque_minimo)
-        venda_15d_valor = cls._coerce_number(venda_15d)
-        venda_mes_anterior_valor = cls._coerce_number(venda_mes_anterior)
+        disponivel_valor = cls._coerce_number(disponivel)
         custo_valor = cls._coerce_number(custo)
         preco_venda_valor = cls._coerce_number(preco_venda)
-        
-        sugestao = max(0.0, venda_15d_valor - estoque_valor)
 
         return {
             "codigo": codigo,
             "descricao": descricao,
             "unidade": unidade if unidade else "UN",
-            "estoque": estoque_valor,
-            "estoque_disponivel": estoque_valor,
-            "estoque_minimo": estoque_minimo_valor,
-            "venda_15d": venda_15d_valor,
-            "venda_mes_anterior": venda_mes_anterior_valor,
+            "estoque": disponivel_valor,
+            "estoque_disponivel": disponivel_valor,
+            "estoque_minimo": 0.0,
+            "venda_15d": 0.0,
+            "venda_mes_anterior": 0.0,
             "custo": custo_valor,
             "preco_venda": preco_venda_valor,
-            "sugestao_compra": sugestao,
-            "status": "REPOR" if sugestao > 0 else "OK",
+            "sugestao_compra": 0.0,
+            "status": "OK",
         }
 
     def __init__(self):
@@ -116,30 +108,33 @@ class SankhyaAPIService:
 
         query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
 
-        # SQL direta baseada no Gadget do Sankhya
+        # SQL exatamente idêntica à do seu Gadget do Sankhya
         sql_query = """
         SELECT 
             PRO.CODPROD,
-            PRO.DESCRPROD,
+            PRO.DESCRPROD, 
             PRO.CODVOL AS UNIDADEMEDIDA,
-            ISNULL(EST.ESTOQUE, 0) - ISNULL(EST.RESERVADO, 0) AS ESTOQUE,
-            ISNULL(EST.ESTMIN, 0) AS ESTOQUE_MINIMO,
-            0 AS VENDAS_15D,
-            0 AS VENDAS_MES_ANTERIOR,
+            ISNULL(EST.ESTOQUE, 0) AS ESTOQUE,
+            ISNULL(EST.RESERVADO, 0) AS RESERVADO,
+            (ISNULL(EST.ESTOQUE, 0) - ISNULL(EST.RESERVADO, 0)) AS DISPONIVEL,
+            VEN.APELIDO AS SEPARADOR,
             ISNULL(CUS.CUSREP, 0) AS PRECO_CUSTO,
-            ISNULL(EXC.VLRVENDA, 0) AS PRECO_VENDA
+            ((ISNULL(EST.ESTOQUE, 0) - ISNULL(EST.RESERVADO, 0)) * ISNULL(CUS.CUSREP, 0)) AS TOTAL_DISP_CUSTO,
+            ISNULL(EXC.VLRVENDA, 0) AS PRECO_VENDA,
+            ((ISNULL(EST.ESTOQUE, 0) - ISNULL(EST.RESERVADO, 0)) * ISNULL(EXC.VLRVENDA, 0)) AS TOTAL_DISP_VENDA
         FROM TGFPRO PRO
 
         INNER JOIN (
             SELECT 
                 CODPROD,
                 SUM(ESTOQUE) AS ESTOQUE,
-                SUM(RESERVADO) AS RESERVADO,
-                MAX(ESTMIN) AS ESTMIN
+                SUM(RESERVADO) AS RESERVADO
             FROM TGFEST
             WHERE TIPO = 'P'
             GROUP BY CODPROD
         ) EST ON EST.CODPROD = PRO.CODPROD
+
+        LEFT JOIN TGFVEN VEN ON VEN.CODVEND = PRO.AD_CODVEND
 
         LEFT JOIN (
             SELECT CODPROD, CUSREP
@@ -152,13 +147,16 @@ class SankhyaAPIService:
         LEFT JOIN (
             SELECT CODPROD, VLRVENDA
             FROM (
-                SELECT E.CODPROD, E.VLRVENDA, ROW_NUMBER() OVER (PARTITION BY E.CODPROD ORDER BY E.NUTAB DESC) AS RN
+                SELECT 
+                    E.CODPROD, 
+                    E.VLRVENDA,
+                    ROW_NUMBER() OVER (PARTITION BY E.CODPROD ORDER BY E.NUTAB DESC) AS RN
                 FROM TGFEXC E
             ) TAB_TEMP WHERE RN = 1
         ) EXC ON EXC.CODPROD = PRO.CODPROD
 
-        WHERE PRO.ATIVO = 'S'
-          AND RTRIM(LTRIM(PRO.USOCOM)) = 'R'
+        WHERE PRO.ATIVO = 'S' 
+          AND PRO.AD_MOBILIDADE = 'S'
         ORDER BY PRO.DESCRPROD
         """
 
@@ -195,7 +193,7 @@ class SankhyaAPIService:
                 if item:
                     produtos.append(self._normalizar_produto(item))
 
-            logger.info(f"Retornados {len(produtos)} produtos de revenda.")
+            logger.info(f"Retornados {len(produtos)} produtos (AD_MOBILIDADE = 'S').")
             return produtos
 
         except Exception as e:
