@@ -141,7 +141,7 @@ class SankhyaAPIService:
 
         query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
 
-        # Consulta SQL com Custo de Reposição (CUSREP) e Preço de Venda
+        # Consulta SQL com Custo de Reposição (CUSREP) e Preço de Venda Ordenado por NUTAB
         sql_query = """
         WITH Vendas15D AS (
             SELECT 
@@ -182,11 +182,14 @@ class SankhyaAPIService:
             ) CUSTO_TEMP WHERE RN = 1
         ),
         PrecoVenda AS (
-            SELECT E.CODPROD, MAX(E.VLRVENDA) AS VLRVENDA
-            FROM TGFEXC E
-            INNER JOIN TGFTAB T ON T.NUTAB = E.NUTAB
-            WHERE T.CODTAB = 0
-            GROUP BY E.CODPROD
+            SELECT CODPROD, VLRVENDA
+            FROM (
+                SELECT 
+                    E.CODPROD, 
+                    E.VLRVENDA,
+                    ROW_NUMBER() OVER (PARTITION BY E.CODPROD ORDER BY E.NUTAB DESC) AS RN
+                FROM TGFEXC E
+            ) TAB_TEMP WHERE RN = 1
         )
         SELECT 
             PRO.CODPROD,
