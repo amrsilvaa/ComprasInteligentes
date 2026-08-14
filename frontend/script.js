@@ -2,13 +2,12 @@
 // COMPRAS INTELIGENTES - SCRIPT UNIFICADO E CORRIGIDO
 // ============================================================
 
-// CONFIGURAÇÃO (deixe vazio se a API estiver no mesmo domínio/porta do frontend)
+// Utiliza o mesmo domínio/porta do backend (Render)
 const API = "";
 
 // VARIÁVEIS GLOBAIS
 let produtosMaisVendidos = [];
 let analiseEstoque = [];
-let planilha = [];
 let produtosParaComprar = [];
 
 // ============================================================
@@ -92,91 +91,60 @@ function badgeStatus(status) {
 }
 
 // ============================================================
-// REQUISIÇÕES E CARREGAMENTO DE DADOS
+// REQUISIÇÕES E CARREGAMENTO DE DADOS (ROTA ÚNICA /api/estoque)
 // ============================================================
 
-async function carregarPlanilha() {
-    try {
-        const resposta = await fetch(`${API}/planilha`);
-        if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
-
-        const dados = await resposta.json();
-        if (Array.isArray(dados)) {
-            planilha = dados;
-            const totalProdutos = document.getElementById("totalProdutos");
-            if (totalProdutos) {
-                totalProdutos.textContent = formatarInteiro(dados.length);
-            }
-        }
-        sistemaOnline();
-    } catch (erro) {
-        console.error("ERRO /planilha:", erro);
-        sistemaOffline();
+async function carregarDados() {
+    const tabelaEstoque = document.getElementById("tabelaEstoque");
+    if (tabelaEstoque) {
+        tabelaEstoque.innerHTML = `<tr><td colspan="11">Carregando dados do Sankhya...</td></tr>`;
     }
-}
 
-async function carregarMaisVendidos() {
     try {
-        const resposta = await fetch(`${API}/mais-vendidos`);
+        const resposta = await fetch(`${API}/api/estoque`);
         if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
 
         const dados = await resposta.json();
-        if (!Array.isArray(dados)) {
-            throw new Error("A API /mais-vendidos não retornou uma lista.");
+        
+        if (dados.error) {
+            throw new Error(dados.error);
         }
 
-        produtosMaisVendidos = dados;
-        produtosMaisVendidos.sort((a, b) => numero(b.volume) - numero(a.volume));
+        // Caso o backend retorne uma lista de produtos
+        analiseEstoque = Array.isArray(dados) ? dados : (dados.produtos || []);
 
-        const produtoMaisVendido = document.getElementById("produtoMaisVendido");
-        const volumeLider = document.getElementById("volumeLider");
+        // Atualiza os cartões informativos do painel
+        const totalProdutos = document.getElementById("totalProdutos");
+        if (totalProdutos) {
+            totalProdutos.textContent = formatarInteiro(analiseEstoque.length);
+        }
 
+        // Processa produtos mais vendidos
+        produtosMaisVendidos = [...analiseEstoque].sort((a, b) => numero(b.vendas_mes) - numero(a.vendas_mes));
+        
         if (produtosMaisVendidos.length > 0) {
             const lider = produtosMaisVendidos[0];
+            const produtoMaisVendido = document.getElementById("produtoMaisVendido");
+            const volumeLider = document.getElementById("volumeLider");
+            
             if (produtoMaisVendido) produtoMaisVendido.textContent = lider.produto ?? "-";
-            if (volumeLider) volumeLider.textContent = formatarNumero(lider.volume);
+            if (volumeLider) volumeLider.textContent = formatarNumero(lider.vendas_mes);
         }
 
-        let totalVolume = produtosMaisVendidos.reduce((acc, item) => acc + numero(item.volume), 0);
+        let totalVolume = analiseEstoque.reduce((acc, item) => acc + numero(item.vendas_mes), 0);
         const volumeVendido = document.getElementById("volumeVendido");
         if (volumeVendido) volumeVendido.textContent = formatarNumero(totalVolume);
 
-        renderizarMaisVendidos();
-        sistemaOnline();
-    } catch (erro) {
-        console.error("ERRO /mais-vendidos:", erro);
-        const tabela = document.getElementById("tabelaProdutos");
-        if (tabela) {
-            tabela.innerHTML = `<tr><td colspan="3">Erro ao carregar produtos.</td></tr>`;
-        }
-        sistemaOffline();
-    }
-}
-
-async function carregarAnaliseEstoque() {
-    try {
-        const tabela = document.getElementById("tabelaEstoque");
-        if (tabela) {
-            tabela.innerHTML = `<tr><td colspan="11">Carregando análise...</td></tr>`;
-        }
-
-        const resposta = await fetch(`${API}/analise-estoque`);
-        if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
-
-        const dados = await resposta.json();
-        if (!Array.isArray(dados)) {
-            throw new Error("A API /analise-estoque não retornou uma lista.");
-        }
-
-        analiseEstoque = dados;
+        // Renderiza as tabelas
         renderizarEstoque();
+        renderizarMaisVendidos();
         carregarOQueComprar();
         sistemaOnline();
+
     } catch (erro) {
-        console.error("ERRO /analise-estoque:", erro);
-        const tabela = document.getElementById("tabelaEstoque");
-        if (tabela) {
-            tabela.innerHTML = `<tr><td colspan="11">Erro ao carregar análise de estoque.</td></tr>`;
+        console.error("ERRO /api/estoque:", erro);
+        if (tabelaEstoque) {
+            tabelaEstoque.innerHTML = `<tr><td colspan="11" style="color:red; text-align:center;">Falha na conexão com o servidor.</td></tr>`;
         }
         sistemaOffline();
     }
@@ -195,11 +163,11 @@ function renderizarMaisVendidos() {
         return;
     }
 
-    tabela.innerHTML = produtosMaisVendidos.map((item, indice) => `
+    tabela.innerHTML = produtosMaisVendidos.slice(0, 10).map((item, indice) => `
         <tr>
             <td>${indice + 1}</td>
             <td>${escaparHTML(item.produto ?? "-")}</td>
-            <td>${formatarNumero(item.volume)}</td>
+            <td>${formatarNumero(item.vendas_mes)}</td>
         </tr>
     `).join("");
 }
@@ -275,7 +243,7 @@ function carregarOQueComprar() {
     const normais = produtosParaComprar.filter(i => i.status === "Comprar");
     const quantidadeTotal = produtosParaComprar.reduce((acc, i) => acc + numero(i.sugestao_compra), 0);
 
-    // Atualiza contadores do painel/modal
+    // Atualiza contadores
     const totalUrgentes = document.getElementById("totalUrgentes");
     const totalComprar = document.getElementById("totalComprar");
     const quantidadeCompra = document.getElementById("quantidadeCompra");
@@ -284,7 +252,6 @@ function carregarOQueComprar() {
     if (totalComprar) totalComprar.textContent = formatarInteiro(normais.length);
     if (quantidadeCompra) quantidadeCompra.textContent = formatarNumero(quantidadeTotal);
 
-    // Atualiza o texto do Card no Rodapé
     const cardOQueComprar = document.getElementById("cardOQueComprar") || document.getElementById("statusCardComprar");
     if (cardOQueComprar) {
         cardOQueComprar.textContent = `${produtosParaComprar.length} produtos para comprar`;
@@ -354,7 +321,7 @@ function fecharOQueComprar() {
 }
 
 // ============================================================
-// IMPRESSÃO E EXPORTAÇÃO DE LISTA
+// IMPRESSÃO E EXPORTAÇÃO
 // ============================================================
 
 function gerarTextoListaCompras() {
@@ -401,7 +368,6 @@ async function copiarListaCompras() {
             await navigator.clipboard.writeText(texto);
             alert("✅ Lista de compras copiada!");
         } else {
-            // Fallback para contextos não-HTTPS ou navegadores antigos
             const textarea = document.createElement("textarea");
             textarea.value = texto;
             document.body.appendChild(textarea);
@@ -465,16 +431,6 @@ function imprimirListaCompras() {
 // ============================================================
 // INICIALIZAÇÃO
 // ============================================================
-
-async function carregarDados() {
-    console.log("Atualizando Compras Inteligentes...");
-    await Promise.all([
-        carregarPlanilha(),
-        carregarMaisVendidos(),
-        carregarAnaliseEstoque()
-    ]);
-    console.log("Dados atualizados.");
-}
 
 document.addEventListener("DOMContentLoaded", () => {
     console.log("Compras Inteligentes iniciado.");
