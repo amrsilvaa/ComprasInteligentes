@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Compras Inteligentes</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { background: #f0f2f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+        .login-card { background: #ffffff; width: 100%; max-width: 400px; padding: 32px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); text-align: center; }
+        .logo { font-size: 24px; font-weight: 700; color: #1a2530; margin-bottom: 8px; }
+        .subtitle { font-size: 14px; color: #64748b; margin-bottom: 24px; }
+        .form-group { margin-bottom: 16px; text-align: left; }
+        label { font-size: 13px; font-weight: 600; color: #334155; display: block; margin-bottom: 6px; }
+        input { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; outline: none; transition: 0.2s; }
+        input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+        .btn { width: 100%; padding: 12px; font-size: 15px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; margin-top: 8px; }
+        .btn-primary { background: #1a2530; color: #fff; }
+        .btn-primary:hover { background: #2d3e50; }
+        .btn-faceid { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; }
+        .btn-faceid:hover { background: #dbeafe; }
+        .divider { display: flex; align-items: center; margin: 20px 0; color: #94a3b8; font-size: 13px; }
+        .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: #e2e8f0; }
+        .divider span { padding: 0 10px; }
+        .alert { padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; display: none; }
+        .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    </style>
+</head>
+<body>
+
+    <div class="login-card">
+        <div class="logo">Compras Inteligentes</div>
+        <div class="subtitle">Acesse o Painel de Sugestão de Compras</div>
+
+        <div id="alert" class="alert alert-error"></div>
+
+        <button id="btnFaceID" class="btn btn-faceid" onclick="loginFaceID()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H5a2 2 0 0 0-2 2v4m0 6v4a2 2 0 0 0 2 2h4m6 0h4a2 2 0 0 0 2-2v-4m0-6V5a2 2 0 0 0-2-2h-4"/><path d="M9 9h.01M15 9h.01M10 17s1 1 2 1 2-1 2-1"/><path d="M12 12v2"/></svg>
+            Entrar com Face ID / Biometria
+        </button>
+
+        <div class="divider"><span>ou com usuário e senha</span></div>
+
+        <form onsubmit="loginSenha(event)">
+            <div class="form-group">
+                <label>Usuário</label>
+                <input type="text" id="username" required placeholder="Digite seu usuário">
+            </div>
+            <div class="form-group">
+                <label>Senha</label>
+                <input type="password" id="password" required placeholder="Digite sua senha">
+            </div>
+            <button type="submit" class="btn btn-primary">Entrar no Sistema</button>
+        </form>
+    </div>
+
+    <script>
+        function showAlert(msg) {
+            const alert = document.getElementById("alert");
+            alert.innerText = msg;
+            alert.style.display = "block";
+        }
+
+        async function loginSenha(e) {
+            e.preventDefault();
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+
+            try {
+                const res = await fetch("/api/login/password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    window.location.href = "/";
+                } else {
+                    showAlert(data.message || "Credenciais inválidas.");
+                }
+            } catch (err) {
+                showAlert("Erro ao conectar ao servidor.");
+            }
+        }
+
+        // Função para Autenticar com Face ID / WebAuthn
+        async function loginFaceID() {
+            try {
+                const optRes = await fetch("/api/webauthn/login-options");
+                const options = await optRes.json();
+
+                // Converte Base64URL para ArrayBuffer
+                options.challenge = Uint8Array.from(atob(options.challenge.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+
+                const credential = await navigator.credentials.get({ publicKey: options });
+
+                const authData = {
+                    id: credential.id,
+                    rawId: arrayBufferToBase64(credential.rawId),
+                    type: credential.type,
+                    response: {
+                        authenticatorData: arrayBufferToBase64(credential.response.authenticatorData),
+                        clientDataJSON: arrayBufferToBase64(credential.response.clientDataJSON),
+                        signature: arrayBufferToBase64(credential.response.signature),
+                        userHandle: credential.response.userHandle ? arrayBufferToBase64(credential.response.userHandle) : null
+                    }
+                };
+
+                const verifyRes = await fetch("/api/webauthn/login-verify", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(authData)
+                });
+
+                const verifyData = await verifyRes.json();
+                if (verifyData.success) {
+                    window.location.href = "/";
+                } else {
+                    showAlert(verifyData.message || "Face ID não cadastrado.");
+                }
+            } catch (err) {
+                showAlert("Face ID cancelado ou não suportado neste navegador.");
+            }
+        }
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            let bytes = new Uint8Array(buffer);
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+    </script>
+</body>
+</html>

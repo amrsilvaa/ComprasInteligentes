@@ -1,184 +1,229 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from backend.services.sankhya_service import buscar_dados_estoque_vendas
+import os
+import json
+import logging
+from pathlib import Path
+from flask import Flask, jsonify, render_template, request, session, redirect, url_for
+from dotenv import load_dotenv
 
-app = FastAPI()
+from services.sankhya_service import buscar_dados_estoque_vendas
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# WebAuthn para Face ID / Biometria
+from webauthn import (
+    generate_registration_options,
+    verify_registration_response,
+    generate_authentication_options,
+    verify_authentication_response,
+)
+from webauthn.helpers.structs import (
+    PublicKeyCredentialRpEntity,
+    PublicKeyCredentialUserEntity,
+    UserVerificationRequirement,
+    AuthenticatorSelectionCriteria,
+    AuthenticatorAttachment,
 )
 
-HTML_CONTENT = """
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Painel de Compras - Sankhya</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    th.sortable { cursor: pointer; user-select: none; }
-    th.sortable:hover { background-color: #374151; }
-  </style>
-</head>
-<body class="bg-gray-100 p-6">
-  <div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg">
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__, static_folder="../frontend", template_folder="../frontend")
+app.secret_key = os.getenv("SECRET_KEY", "chave-secreta-sankhya-compras-2026")
+
+# Usuário e Senha Padrão de Acesso (pode ser configurado no .env)
+ADMIN_USER = os.getenv("APP_USER", "admin")
+ADMIN_PASS = os.getenv("APP_PASSWORD", "123456")
+
+# Nome de exibição do App para a chave de segurança
+RP_ID = os.getenv("RP_ID", "comprasinteligentes.onrender.com")  # Ou 'localhost' em dev
+RP_NAME = "Compras Inteligentes"
+
+# Banco em memória/arquivo simples para credenciais salvas do Face ID
+CREDENTIALS_FILE = Path(__file__).resolve().parent / "user_credentials.json"
+
+
+def load_credentials():
+    if CREDENTIALS_FILE.exists():
+        try:
+            with open(CREDENTIALS_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def save_credentials(data):
+    with open(CREDENTIALS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+db_credentials = load_credentials()
+
+
+# Middleware de Checagem de Autenticação
+def login_required(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("logged_in"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Não autorizado"}), 401
+            return redirect(url_for("login_page"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.route("/login", methods=["GET"])
+def login_page():
+    if session.get("logged_in"):
+        return redirect(url_for("index"))
+    return app.send_static_file("login.html")
+
+
+@app.route("/api/login/password", methods=["POST"])
+def login_password():
+    data = request.json or {}
+    username = data.get("username", "")
+    password = data.get("password", "")
+
+    if username == ADMIN_USER and password == ADMIN_PASS:
+        session["logged_in"] = True
+        session["user"] = username
+        return jsonify({"success": True})
     
-    <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-800">Sugestão de Compras (Giro 15 Dias)</h1>
-        <p class="text-sm text-gray-500">Clique no título das colunas para ordenar</p>
-      </div>
-      <input 
-        type="text" 
-        id="searchInput" 
-        placeholder="Buscar por código ou descrição..." 
-        class="border border-gray-300 rounded-lg px-4 py-2 w-full md:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-    </div>
+    return jsonify({"success": False, "message": "Usuário ou senha inválidos."}), 401
 
-    <div class="overflow-x-auto rounded-lg border border-gray-200">
-      <table class="w-full text-left border-collapse">
-        <thead>
-          <tr class="bg-gray-800 text-white uppercase text-xs tracking-wider">
-            <th class="p-3 sortable" onclick="ordenarPor('codigo')">Código ⇕</th>
-            <th class="p-3 sortable" onclick="ordenarPor('descricao')">Descrição do Produto ⇕</th>
-            <th class="p-3">Unid.</th>
-            <th class="p-3 text-right sortable" onclick="ordenarPor('estoque')">Estoque ⇕</th>
-            <th class="p-3 text-right sortable" onclick="ordenarPor('estoque_minimo')">Est. Mín. ⇕</th>
-            <th class="p-3 text-right sortable" onclick="ordenarPor('venda_15d')">Vendas (15d) ⇕</th>
-            <th class="p-3 text-right sortable" onclick="ordenarPor('venda_mes_anterior')">Vendas (Mês Ant.) ⇕</th>
-            <th class="p-3 text-right sortable" onclick="ordenarPor('custo')">Custo Un. (R$) ⇕</th>
-            <th class="p-3 text-right sortable" onclick="ordenarPor('preco_venda')">Preço Venda (R$) ⇕</th>
-            <th class="p-3 text-right sortable" onclick="ordenarPor('sugestao_compra')">Sugestão Compra ⇕</th>
-            <th class="p-3 text-center">Status</th>
-          </tr>
-        </thead>
-        <tbody id="tableBody" class="divide-y divide-gray-200 text-sm">
-          <tr>
-            <td colspan="11" class="p-6 text-center text-gray-500">Carregando dados do Sankhya...</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
 
-  </div>
+@app.route("/logout", methods=["GET", "POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login_page"))
 
-  <script>
-    let todosProdutos = [];
-    let produtosFiltrados = [];
-    let colunaAtual = 'sugestao_compra';
-    let ordemAsc = false;
 
-    function fmt(val) {
-      return (val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-    }
+# --- ROTAS WEBAUTHN (FACE ID / BIOMETRIA) ---
 
-    function fmtMoeda(val) {
-      return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    }
+@app.route("/api/webauthn/register-options", methods=["GET"])
+@login_required
+def webauthn_register_options():
+    user_id = session.get("user", ADMIN_USER).encode("utf-8")
+    
+    options = generate_registration_options(
+        rp_id=request.host.split(":")[0],
+        rp_name=RP_NAME,
+        user_id=user_id,
+        user_name=session.get("user", ADMIN_USER),
+        user_display_name="Usuário de Compras",
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            user_verification=UserVerificationRequirement.PREFERRED,
+            authenticator_attachment=AuthenticatorAttachment.PLATFORM  # Face ID / Touch ID integrado
+        ),
+    )
+    
+    session["webauthn_challenge"] = options.challenge.hex()
+    return options.to_json()
 
-    async function carregarProdutos() {
-      const tbody = document.getElementById('tableBody');
-      try {
-        const response = await fetch('/api/sankhya?t=' + new Date().getTime());
-        const data = await response.json();
 
-        if (data.sucesso && Array.isArray(data.produtos)) {
-          todosProdutos = data.produtos;
-          produtosFiltrados = [...todosProdutos];
-          renderizarTabela(produtosFiltrados);
-        } else {
-          tbody.innerHTML = `<tr><td colspan="11" class="p-6 text-center text-red-500 font-semibold">Erro ao carregar dados.</td></tr>`;
+@app.route("/api/webauthn/register-verify", methods=["POST"])
+@login_required
+def webauthn_register_verify():
+    challenge_hex = session.get("webauthn_challenge")
+    if not challenge_hex:
+        return jsonify({"success": False, "message": "Desafio de segurança expirado"}), 400
+
+    body = request.json
+    try:
+        verification = verify_registration_response(
+            credential=body,
+            expected_challenge=bytes.fromhex(challenge_hex),
+            expected_rp_id=request.host.split(":")[0],
+            expected_origin=request.origin or f"https://{request.host}",
+        )
+        
+        username = session.get("user", ADMIN_USER)
+        db_credentials[username] = {
+            "credential_id": verification.credential_id.hex(),
+            "public_key": verification.credential_public_key.hex(),
+            "sign_count": verification.sign_count,
         }
-      } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="11" class="p-6 text-center text-red-500 font-semibold">Falha de comunicação com o servidor.</td></tr>`;
-      }
-    }
+        save_credentials(db_credentials)
+        
+        return jsonify({"success": True, "message": "Face ID / Biometria cadastrado com sucesso!"})
+    except Exception as e:
+        logger.error(f"Erro ao verificar registro WebAuthn: {e}")
+        return jsonify({"success": False, "message": str(e)}), 400
 
-    function ordenarPor(coluna) {
-      if (colunaAtual === coluna) {
-        ordemAsc = !ordemAsc;
-      } else {
-        colunaAtual = coluna;
-        ordemAsc = (coluna === 'descricao');
-      }
 
-      produtosFiltrados.sort((a, b) => {
-        let valA = a[coluna] ?? 0;
-        let valB = b[coluna] ?? 0;
+@app.route("/api/webauthn/login-options", methods=["GET"])
+def webauthn_login_options():
+    options = generate_authentication_options(
+        rp_id=request.host.split(":")[0],
+        user_verification=UserVerificationRequirement.PREFERRED,
+    )
+    session["webauthn_challenge"] = options.challenge.hex()
+    return options.to_json()
 
-        if (typeof valA === 'string') {
-          return ordemAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-        }
-        return ordemAsc ? valA - valB : valB - valA;
-      });
 
-      renderizarTabela(produtosFiltrados);
-    }
+@app.route("/api/webauthn/login-verify", methods=["POST"])
+def webauthn_login_verify():
+    challenge_hex = session.get("webauthn_challenge")
+    if not challenge_hex:
+        return jsonify({"success": False, "message": "Desafio expirado"}), 400
 
-    function renderizarTabela(produtos) {
-      const tbody = document.getElementById('tableBody');
+    body = request.json
+    cred_id = body.get("id")
 
-      if (produtos.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="11" class="p-6 text-center text-gray-500">Nenhum produto encontrado.</td></tr>`;
-        return;
-      }
+    # Localizar credencial cadastrada
+    target_user = None
+    target_cred = None
+    for uname, cred in db_credentials.items():
+        if cred.get("credential_id") == cred_id or cred.get("credential_id") == bytes.fromhex(cred_id).hex():
+            target_user = uname
+            target_cred = cred
+            break
 
-      tbody.innerHTML = produtos.map(p => {
-        const precisaComprar = p.sugestao_compra > 0;
-        const badgeStatus = precisaComprar
-          ? `<span class="bg-red-100 text-red-800 font-bold px-3 py-1 rounded-full text-xs">REPOR</span>`
-          : `<span class="bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full text-xs">OK</span>`;
+    if not target_cred:
+        return jsonify({"success": False, "message": "Dispositivo ou Face ID não reconhecido neste servidor."}), 400
 
-        const vendas15 = p.venda_15d ?? 0;
-        const vendasMesAnt = p.venda_mes_anterior ?? 0;
+    try:
+        verification = verify_authentication_response(
+            credential=body,
+            expected_challenge=bytes.fromhex(challenge_hex),
+            expected_rp_id=request.host.split(":")[0],
+            expected_origin=request.origin or f"https://{request.host}",
+            credential_public_key=bytes.fromhex(target_cred["public_key"]),
+            credential_current_sign_count=target_cred["sign_count"],
+        )
 
-        return `
-          <tr class="hover:bg-blue-50 transition-colors ${precisaComprar ? 'bg-red-50/40' : ''}">
-            <td class="p-3 font-mono text-gray-600">${p.codigo}</td>
-            <td class="p-3 font-medium text-gray-900">${p.descricao}</td>
-            <td class="p-3 text-gray-500">${p.unidade}</td>
-            <td class="p-3 text-right font-semibold text-gray-800">${fmt(p.estoque)}</td>
-            <td class="p-3 text-right text-gray-500">${fmt(p.estoque_minimo)}</td>
-            <td class="p-3 text-right font-semibold text-blue-600">${fmt(vendas15)}</td>
-            <td class="p-3 text-right text-gray-600">${fmt(vendasMesAnt)}</td>
-            <td class="p-3 text-right font-mono text-gray-700">${fmtMoeda(p.custo)}</td>
-            <td class="p-3 text-right font-mono text-emerald-700 font-semibold">${fmtMoeda(p.preco_venda)}</td>
-            <td class="p-3 text-right font-bold ${precisaComprar ? 'text-red-600' : 'text-gray-700'}">
-              ${fmt(p.sugestao_compra)}
-            </td>
-            <td class="p-3 text-center">${badgeStatus}</td>
-          </tr>
-        `;
-      }).join('');
-    }
+        db_credentials[target_user]["sign_count"] = verification.new_sign_count
+        save_credentials(db_credentials)
 
-    document.getElementById('searchInput').addEventListener('input', (e) => {
-      const termo = e.target.value.toLowerCase();
-      produtosFiltrados = todosProdutos.filter(p => 
-        (p.descricao && p.descricao.toLowerCase().includes(termo)) || 
-        String(p.codigo).includes(termo)
-      );
-      renderizarTabela(produtosFiltrados);
-    });
+        session["logged_in"] = True
+        session["user"] = target_user
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Erro ao autenticar Face ID: {e}")
+        return jsonify({"success": False, "message": "Falha no reconhecimento do Face ID."}), 400
 
-    carregarProdutos();
-  </script>
-</body>
-</html>
-"""
 
-@app.get("/", response_class=HTMLResponse)
-def read_index():
-    return HTML_CONTENT
+# --- ROTAS PRINCIPAIS PROTEGIDAS ---
 
-@app.get("/api/sankhya")
-def get_sankhya_data():
-    produtos = buscar_dados_estoque_vendas()
-    return {"sucesso": True, "produtos": produtos}
+@app.route("/")
+@login_required
+def index():
+    return app.send_static_file("index.html")
+
+
+@app.route("/api/estoque", methods=["GET"])
+@login_required
+def get_estoque():
+    try:
+        dados = buscar_dados_estoque_vendas()
+        return jsonify(dados)
+    except Exception as e:
+        logger.error(f"Erro na rota /api/estoque: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
