@@ -58,7 +58,7 @@ class SankhyaAPIService:
         custo_valor = cls._coerce_number(custo)
         preco_venda_valor = cls._coerce_number(preco_venda)
 
-        # Regra de Sugestão de Compra e Status
+        # Regra de Sugestão de Compra baseada na Quantidade de Venda de 15 dias vs Estoque Disponível
         sugestao = max(0.0, venda_15d_valor - disponivel_valor)
         status = "REPOR" if sugestao > 0 else "OK"
 
@@ -116,6 +116,7 @@ class SankhyaAPIService:
 
         query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
 
+        # SQL corrigida para somar EXCLUSIVAMENTE a quantidade física de Vendas (TIPMOV = 'V')
         sql_query = """
         WITH V15 AS (
             SELECT 
@@ -125,6 +126,7 @@ class SankhyaAPIService:
             INNER JOIN TGFITE ITE ON CAB.NUNOTA = ITE.NUNOTA
             WHERE CAB.DTNEG >= DATEADD(day, -15, CAST(GETDATE() AS DATE))
               AND CAB.STATUSNOTA = 'L'
+              AND CAB.TIPMOV = 'V'
             GROUP BY ITE.CODPROD
         ),
         VMA AS (
@@ -136,6 +138,7 @@ class SankhyaAPIService:
             WHERE CAB.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
               AND CAB.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
               AND CAB.STATUSNOTA = 'L'
+              AND CAB.TIPMOV = 'V'
             GROUP BY ITE.CODPROD
         )
         SELECT 
@@ -226,7 +229,7 @@ class SankhyaAPIService:
                 if item:
                     produtos.append(self._normalizar_produto(item))
 
-            logger.info(f"Retornados {len(produtos)} produtos com vendas e sugestão.")
+            logger.info(f"Retornados {len(produtos)} produtos com a quantidade exata de vendas.")
             return produtos
 
         except Exception as e:
