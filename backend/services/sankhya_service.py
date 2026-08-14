@@ -5,22 +5,17 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-# Carrega as variáveis de ambiente do arquivo backend/.env ou do Render
-env_path = Path(__file__).resolve().parent.parent / ".env"
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 logger = logging.getLogger(__name__)
 
-# Credenciais da API Web do Sankhya
 SANKHYA_URL = os.getenv("SANKHYA_URL", "").rstrip("/")
 SANKHYA_USUARIO = os.getenv("SANKHYA_USUARIO", "")
 SANKHYA_SENHA = os.getenv("SANKHYA_SENHA", "")
 
 
 class SankhyaAPIService:
-    """
-    Serviço para autenticação e consulta de dados via API REST do Sankhya (MGE).
-    """
 
     @staticmethod
     def _coerce_number(value: Any) -> float:
@@ -50,13 +45,13 @@ class SankhyaAPIService:
     def _normalizar_produto(cls, item: Dict[str, Any]) -> Dict[str, Any]:
         codigo = cls._first_value(item, "CODPROD", "codigo", "codprod")
         descricao = cls._first_value(item, "DESCRPROD", "descricao", "descrprod")
-        unidade = cls._first_value(item, "UNIDADEMEDIDA", "unidade", "codvol")
-        estoque = cls._first_value(item, "ESTOQUE_DISPONIVEL", "SALDO", "DISPONIVEL", "ESTOQUE", "estoque")
-        estoque_minimo = cls._first_value(item, "ESTOQUE_MINIMO", "estoque_minimo", "ESTMIN")
-        venda_15d = cls._first_value(item, "VENDAS_15D", "vendas_15d", "QTD_VENDIDA_15D")
-        venda_mes_anterior = cls._first_value(item, "VENDAS_MES_ANTERIOR", "vendas_mes_anterior", "QTD_VENDIDA_MES_ANT")
-        custo = cls._first_value(item, "CUSTO_UNITARIO", "custo_unitario", "CUSREP", "PRECO_CUSTO")
-        preco_venda = cls._first_value(item, "PRECO_VENDA", "preco_venda", "VLRVENDA")
+        unidade = cls._first_value(item, "UNIDADEMEDIDA", "unidade", "codvol", "CODVOL")
+        estoque = cls._first_value(item, "ESTOQUE", "DISPONIVEL", "SALDO", "estoque")
+        estoque_minimo = cls._first_value(item, "ESTOQUE_MINIMO", "ESTMIN", "estoque_minimo")
+        venda_15d = cls._first_value(item, "VENDAS_15D", "vendas_15d")
+        venda_mes_anterior = cls._first_value(item, "VENDAS_MES_ANTERIOR", "vendas_mes_anterior")
+        custo = cls._first_value(item, "PRECO_CUSTO", "CUSTO_UNITARIO", "custo")
+        preco_venda = cls._first_value(item, "PRECO_VENDA", "preco_venda")
 
         estoque_valor = cls._coerce_number(estoque)
         estoque_minimo_valor = cls._coerce_number(estoque_minimo)
@@ -64,12 +59,13 @@ class SankhyaAPIService:
         venda_mes_anterior_valor = cls._coerce_number(venda_mes_anterior)
         custo_valor = cls._coerce_number(custo)
         preco_venda_valor = cls._coerce_number(preco_venda)
+        
         sugestao = max(0.0, venda_15d_valor - estoque_valor)
 
         produto = {
             "codigo": codigo,
             "descricao": descricao,
-            "unidade": unidade,
+            "unidade": unidade if unidade else "UN",
             "estoque": estoque_valor,
             "estoque_disponivel": estoque_valor,
             "estoque_minimo": estoque_minimo_valor,
@@ -81,14 +77,6 @@ class SankhyaAPIService:
             "status": "REPOR" if sugestao > 0 else "OK",
         }
 
-        for key, value in item.items():
-            produto[key] = value
-
-        for key in list(produto.keys()):
-            if isinstance(key, str):
-                produto[key.lower()] = produto[key]
-                produto[key.upper()] = produto[key]
-
         return produto
 
     def __init__(self):
@@ -99,9 +87,6 @@ class SankhyaAPIService:
         self.jsessionid = None
 
     def login(self) -> bool:
-        """
-        Realiza login na API do Sankhya MGE e recupera a JSESSIONID.
-        """
         login_url = f"{self.base_url}/service.sbr?serviceName=MobileLoginSP.login&outputType=json"
         
         payload = {
@@ -132,83 +117,72 @@ class SankhyaAPIService:
             return False
 
     def carregar_dados_estoque_vendas(self) -> List[Dict[str, Any]]:
-        """
-        Executa a consulta de estoque e vendas via serviço de consulta (DbExplorerSP.executeQuery).
-        Filtra apenas produtos ATIVOS e de REVENDA (USOCOM = 'R').
-        """
         logger.info("=== INICIANDO carregar_dados_estoque_vendas ===")
         if not self.jsessionid and not self.login():
             raise Exception("Não foi possível autenticar na API do Sankhya.")
 
         query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
 
+        # SQL Direta e Otimizada baseada na query do seu Gadget do Sankhya
         sql_query = """
-        WITH Vendas15D AS (
+        SELECT 
+            PRO.CODPROD,
+            PRO.DESCRPROD,
+            PRO.CODVOL AS UNIDADEMEDIDA,
+            ISNULL(EST.ESTOQUE, 0) - ISNULL(EST.RESERVADO, 0) AS ESTOQUE,
+            ISNULL(EST.ESTMIN, 0) AS ESTOQUE_MINIMO,
+            ISNULL(V15.QTD, 0) AS VENDAS_15D,
+            ISNULL(VMA.QTD, 0) AS VENDAS_MES_ANTERIOR,
+            ISNULL(CUS.CUSREP, 0) AS PRECO_CUSTO,
+            ISNULL(EXC.VLRVENDA, 0) AS PRECO_VENDA
+        FROM TGFPRO PRO
+
+        INNER JOIN (
             SELECT 
-                ITE.CODPROD,
-                SUM(ITE.QTDNEG) AS QTD_VENDIDA_15D
+                CODPROD,
+                SUM(ESTOQUE) AS ESTOQUE,
+                SUM(RESERVADO) AS RESERVADO,
+                MAX(ESTMIN) AS ESTMIN
+            FROM TGFEST
+            WHERE TIPO = 'P'
+            GROUP BY CODPROD
+        ) EST ON EST.CODPROD = PRO.CODPROD
+
+        LEFT JOIN (
+            SELECT ITE.CODPROD, SUM(ITE.QTDNEG) AS QTD
             FROM TGFCAB CAB
             INNER JOIN TGFITE ITE ON CAB.NUNOTA = ITE.NUNOTA
             WHERE CAB.DTNEG >= DATEADD(day, -15, CAST(GETDATE() AS DATE))
               AND CAB.STATUSNOTA = 'L'
             GROUP BY ITE.CODPROD
-        ),
-        VendasMesAnt AS (
-            SELECT 
-                ITE.CODPROD,
-                SUM(ITE.QTDNEG) AS QTD_VENDIDA_MES_ANT
+        ) V15 ON V15.CODPROD = PRO.CODPROD
+
+        LEFT JOIN (
+            SELECT ITE.CODPROD, SUM(ITE.QTDNEG) AS QTD
             FROM TGFCAB CAB
             INNER JOIN TGFITE ITE ON CAB.NUNOTA = ITE.NUNOTA
             WHERE CAB.DTNEG >= DATEADD(month, DATEDIFF(month, 0, GETDATE()) - 1, 0)
               AND CAB.DTNEG < DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)
               AND CAB.STATUSNOTA = 'L'
             GROUP BY ITE.CODPROD
-        ),
-        EstoqueSum AS (
-            SELECT 
-                CODPROD,
-                SUM(ESTOQUE - ISNULL(RESERVADO, 0)) AS ESTOQUE_DISPONIVEL,
-                SUM(ESTOQUE) AS ESTOQUE_ATUAL,
-                MAX(ESTMIN) AS ESTOQUE_MINIMO
-            FROM TGFEST
-            WHERE TIPO = 'P'
-            GROUP BY CODPROD
-        ),
-        CustoReposicao AS (
+        ) VMA ON VMA.CODPROD = PRO.CODPROD
+
+        LEFT JOIN (
             SELECT CODPROD, CUSREP
             FROM (
                 SELECT CODPROD, CUSREP, ROW_NUMBER() OVER (PARTITION BY CODPROD ORDER BY DTATUAL DESC) AS RN
                 FROM TGFCUS
             ) CUSTO_TEMP WHERE RN = 1
-        ),
-        PrecoVenda AS (
+        ) CUS ON CUS.CODPROD = PRO.CODPROD
+
+        LEFT JOIN (
             SELECT CODPROD, VLRVENDA
             FROM (
-                SELECT 
-                    E.CODPROD, 
-                    E.VLRVENDA,
-                    ROW_NUMBER() OVER (PARTITION BY E.CODPROD ORDER BY E.NUTAB DESC) AS RN
+                SELECT E.CODPROD, E.VLRVENDA, ROW_NUMBER() OVER (PARTITION BY E.CODPROD ORDER BY E.NUTAB DESC) AS RN
                 FROM TGFEXC E
             ) TAB_TEMP WHERE RN = 1
-        )
-        SELECT 
-            PRO.CODPROD,
-            PRO.DESCRPROD,
-            PRO.CODVOL AS UNIDADEMEDIDA,
-            ISNULL(EST.ESTOQUE_DISPONIVEL, 0) AS ESTOQUE_DISPONIVEL,
-            ISNULL(EST.ESTOQUE_DISPONIVEL, 0) AS SALDO,
-            ISNULL(EST.ESTOQUE_ATUAL, 0) AS ESTOQUE_ATUAL,
-            ISNULL(EST.ESTOQUE_MINIMO, 0) AS ESTOQUE_MINIMO,
-            ISNULL(V15.QTD_VENDIDA_15D, 0) AS VENDAS_15D,
-            ISNULL(VMA.QTD_VENDIDA_MES_ANT, 0) AS VENDAS_MES_ANTERIOR,
-            ISNULL(CUS.CUSREP, 0) AS CUSTO_UNITARIO,
-            ISNULL(EXC.VLRVENDA, 0) AS PRECO_VENDA
-        FROM TGFPRO PRO
-        LEFT JOIN EstoqueSum EST ON PRO.CODPROD = EST.CODPROD
-        LEFT JOIN Vendas15D V15 ON PRO.CODPROD = V15.CODPROD
-        LEFT JOIN VendasMesAnt VMA ON PRO.CODPROD = VMA.CODPROD
-        LEFT JOIN CustoReposicao CUS ON PRO.CODPROD = CUS.CODPROD
-        LEFT JOIN PrecoVenda EXC ON PRO.CODPROD = EXC.CODPROD
+        ) EXC ON EXC.CODPROD = PRO.CODPROD
+
         WHERE PRO.ATIVO = 'S'
           AND RTRIM(LTRIM(PRO.USOCOM)) = 'R'
         ORDER BY PRO.DESCRPROD
@@ -227,7 +201,7 @@ class SankhyaAPIService:
             data = response.json()
 
             if data.get("status") != "1":
-                status_msg = data.get("statusMessage", "Erro ao executar consulta SQL na API Sankhya")
+                status_msg = data.get("statusMessage", "Erro na consulta Sankhya")
                 logger.error(f"Erro Sankhya API: {status_msg}")
                 return []
 
@@ -265,8 +239,6 @@ class SankhyaAPIService:
                         val_obj = values[idx]
                         val = val_obj.get("$") if isinstance(val_obj, dict) else val_obj
                         item[field_name] = val
-                        item[field_name.upper()] = val
-                        item[field_name.lower()] = val
                 
                 elif isinstance(row, list):
                     for idx, field_name in enumerate(fields):
@@ -274,20 +246,12 @@ class SankhyaAPIService:
                             continue
                         val = row[idx]
                         item[field_name] = val
-                        item[field_name.upper()] = val
-                        item[field_name.lower()] = val
                 
                 if item:
                     produtos.append(self._normalizar_produto(item))
             
-            # Traz todos os produtos de revenda que possuem estoque, venda recente ou venda no mês anterior
-            produtos_revenda = [
-                p for p in produtos 
-                if p.get("estoque", 0) > 0 or p.get("venda_15d", 0) > 0 or p.get("venda_mes_anterior", 0) > 0
-            ]
-            
-            logger.info(f"Carregados {len(produtos_revenda)} de {len(produtos)} produtos de Revenda.")
-            return produtos_revenda
+            logger.info(f"Sucesso! Total de produtos de revenda retornados: {len(produtos)}")
+            return produtos
 
         except Exception as e:
             logger.error(f"Erro ao consultar estoque/vendas via API Sankhya: {str(e)}")
@@ -295,8 +259,5 @@ class SankhyaAPIService:
 
 
 def buscar_dados_estoque_vendas() -> List[Dict[str, Any]]:
-    """
-    Função principal chamada pelo FastAPI.
-    """
     service = SankhyaAPIService()
     return service.carregar_dados_estoque_vendas()
