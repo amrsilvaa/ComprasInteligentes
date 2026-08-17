@@ -5,12 +5,185 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coleta de Validades</title>
     <link rel="stylesheet" href="/style.css">
+    <style>
+        .actions-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .search-input {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            min-width: 250px;
+        }
+        .btn {
+            padding: 10px 18px;
+            background-color: #2b6cb0;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn-success { background-color: #2f855a; }
+        .btn-secondary { background-color: #718096; text-decoration: none; display: inline-block; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background: #fff;
+        }
+        th, td {
+            border: 1px solid #e2e8f0;
+            padding: 10px;
+            text-align: left;
+        }
+        th { background-color: #f7fafc; }
+        input[type="date"], input[type="number"] {
+            padding: 6px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+    </style>
 </head>
 <body>
-    <div class="container" style="padding: 20px; font-family: sans-serif;">
-        <h1>📅 Coleta de Validades</h1>
-        <p>Painel de registro e conferência de datas de vencimento.</p>
-        <a href="/">← Voltar para a página principal</a>
+    <div class="container" style="max-width: 1100px; margin: 20px auto; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>📅 Coleta de Validades</h1>
+            <a href="/" class="btn btn-secondary">← Voltar para Compras</a>
+        </div>
+
+        <div class="actions-bar">
+            <input type="text" id="searchInput" class="search-input" placeholder="Buscar por Código, EAN ou Descrição..." onkeyup="filtrarTabela()">
+            <button class="btn btn-success" onclick="exportarExcel()">📊 Exportar para Excel</button>
+        </div>
+
+        <table id="tabelaValidades">
+            <thead>
+                <tr>
+                    <th style="width: 80px;">Código</th>
+                    <th style="width: 130px;">EAN</th>
+                    <th>Descrição</th>
+                    <th style="width: 120px;">Qtd. Coletada</th>
+                    <th style="width: 160px;">Data Validade</th>
+                </tr>
+            </thead>
+            <tbody id="corpoTabela">
+                <tr>
+                    <td colspan="5" style="text-align: center; color: #718096;">Carregando dados dos produtos...</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
+
+    <script>
+        let produtosGerais = [];
+
+        async function carregarProdutos() {
+            try {
+                const res = await fetch('/api/validades/produtos');
+                const json = await res.json();
+                
+                if (json.sucesso && json.produtos) {
+                    produtosGerais = json.produtos;
+                    renderizarTabela(produtosGerais);
+                } else {
+                    document.getElementById('corpoTabela').innerHTML = 
+                        '<tr><td colspan="5" style="text-align: center; color: red;">Erro ao carregar dados.</td></tr>';
+                }
+            } catch (err) {
+                console.error(err);
+                document.getElementById('corpoTabela').innerHTML = 
+                    '<tr><td colspan="5" style="text-align: center; color: red;">Falha de conexão com o servidor.</td></tr>';
+            }
+        }
+
+        function renderizarTabela(lista) {
+            const tbody = document.getElementById('corpoTabela');
+            if (!lista.length) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Nenhum produto encontrado.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = lista.map((p, idx) => `
+                <tr data-cod="${p.CODPROD || p.COD || ''}">
+                    <td>${p.CODPROD || p.COD || '-'}</td>
+                    <td>${p.EAN || '-'}</td>
+                    <td>${p.DESCRPROD || p.DESCRICAO || '-'}</td>
+                    <td>
+                        <input type="number" min="0" id="qtd_${idx}" placeholder="0" class="input-qtd">
+                    </td>
+                    <td>
+                        <input type="date" id="val_${idx}" class="input-val">
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function filtrarTabela() {
+            const termo = document.getElementById('searchInput').value.toLowerCase();
+            const filtrados = produtosGerais.filter(p => {
+                const cod = String(p.CODPROD || p.COD || '').toLowerCase();
+                const ean = String(p.EAN || '').toLowerCase();
+                const desc = String(p.DESCRPROD || p.DESCRICAO || '').toLowerCase();
+                return cod.includes(termo) || ean.includes(termo) || desc.includes(termo);
+            });
+            renderizarTabela(filtrados);
+        }
+
+        async function exportarExcel() {
+            const linhas = document.querySelectorAll('#corpoTabela tr');
+            const dadosEnviar = [];
+
+            linhas.forEach((tr, idx) => {
+                const qtdInput = tr.querySelector('.input-qtd');
+                const valInput = tr.querySelector('.input-val');
+                
+                if (qtdInput && valInput && (qtdInput.value || valInput.value)) {
+                    const tds = tr.querySelectorAll('td');
+                    dadosEnviar.push({
+                        cod: tds[0].innerText.trim(),
+                        ean: tds[1].innerText.trim(),
+                        desc: tds[2].innerText.trim(),
+                        lotes: [{
+                            qtd: qtdInput.value,
+                            validade: valInput.value
+                        }]
+                    });
+                }
+            });
+
+            if (!dadosEnviar.length) {
+                alert('Preencha ao menos a Quantidade e Validade de um produto antes de exportar!');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/validades/exportar-excel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dadosEnviar)
+                });
+
+                if (!response.ok) throw new Error('Erro na exportação');
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'coleta_validades.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } catch (err) {
+                alert('Erro ao gerar o arquivo Excel.');
+                console.error(err);
+            }
+        }
+
+        window.onload = carregarProdutos;
+    </script>
 </body>
 </html>
