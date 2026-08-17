@@ -5,6 +5,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+# Carrega variáveis de ambiente do .env
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
@@ -43,9 +44,13 @@ class SankhyaAPIService:
 
     @classmethod
     def _normalizar_produto(cls, item: Dict[str, Any]) -> Dict[str, Any]:
-        codigo = cls._first_value(item, "CODPROD", "codigo", "codprod")
-        descricao = cls._first_value(item, "DESCRPROD", "descricao", "descrprod")
+        codigo = cls._first_value(item, "CODPROD", "codigo", "codprod", "cod")
+        descricao = cls._first_value(item, "DESCRPROD", "descricao", "descrprod", "desc")
         unidade = cls._first_value(item, "UNIDADEMEDIDA", "unidade", "codvol", "CODVOL")
+        ean = cls._first_value(item, "EAN", "CODBARRA", "ean", "codbarra")
+        complemento = cls._first_value(item, "COMPLEMENTO", "COMPLDESC", "complemento", "compldesc")
+        separador = cls._first_value(item, "SEPARADOR", "CODAREASEP", "separador", "codareasep")
+
         disponivel = cls._first_value(item, "DISPONIVEL", "ESTOQUE", "estoque")
         venda_15d = cls._first_value(item, "VENDAS_15D", "vendas_15d", "venda_15d")
         venda_mes_anterior = cls._first_value(item, "VENDAS_MES_ANTERIOR", "vendas_mes_anterior", "venda_mes_anterior")
@@ -63,19 +68,27 @@ class SankhyaAPIService:
         status = "REPOR" if sugestao > 0 else "OK"
 
         return {
+            # Mapeamento padrão para o Módulo de Validades
+            "cod": codigo,
+            "ean": ean if ean is not None else "",
+            "complemento": complemento if complemento is not None else "",
+            "desc": descricao,
+            "separador": separador if separador is not None else "",
+            "estoque": disponivel_valor,
+
+            # Mapeamento para Módulos de Compras / Vendas / Estoque Geral
             "codigo": codigo,
             "descricao": descricao,
             "unidade": unidade if unidade else "UN",
-            "estoque": disponivel_valor,
             "estoque_disponivel": disponivel_valor,
             "estoque_minimo": 0.0,
-            
+
             "venda_15d": venda_15d_valor,
             "vendas_15d": venda_15d_valor,
             "venda_mes_anterior": venda_mes_anterior_valor,
             "vendas_mes_ant": venda_mes_anterior_valor,
             "vendas_mes_anterior": venda_mes_anterior_valor,
-            
+
             "custo": custo_valor,
             "custo_un": custo_valor,
             "preco_venda": preco_venda_valor,
@@ -145,10 +158,20 @@ class SankhyaAPIService:
               AND CAB.STATUSNOTA = 'L'
               AND CAB.TIPMOV = 'V'
             GROUP BY ITE.CODPROD
+        ),
+        BAR AS (
+            SELECT 
+                CODPROD,
+                MAX(CODBARRA) AS CODBARRA
+            FROM TGFBAR
+            GROUP BY CODPROD
         )
         SELECT 
             PRO.CODPROD,
+            BAR.CODBARRA AS EAN,
+            PRO.COMPLDESC AS COMPLEMENTO,
             PRO.DESCRPROD, 
+            PRO.CODAREASEP AS SEPARADOR,
             PRO.CODVOL AS UNIDADEMEDIDA,
             ISNULL(EST.ESTOQUE, 0) AS ESTOQUE,
             ISNULL(EST.RESERVADO, 0) AS RESERVADO,
@@ -158,6 +181,8 @@ class SankhyaAPIService:
             ISNULL(CUS.CUSREP, 0) AS PRECO_CUSTO,
             ISNULL(EXC.VLRVENDA, 0) AS PRECO_VENDA
         FROM TGFPRO PRO
+
+        LEFT JOIN BAR ON BAR.CODPROD = PRO.CODPROD
 
         LEFT JOIN (
             SELECT 
@@ -208,14 +233,24 @@ class SankhyaAPIService:
             response.raise_for_status()
             data = response.json()
 
+            # Caso o token/sessão mgeSession tenha expirado, tenta relogar 1 vez
             if data.get("status") != "1":
-                logger.error(f"Erro Sankhya API: {data.get('statusMessage')}")
-                return []
+                logger.warning(f"Sessão ou resposta inválida da API Sankhya ({data.get('status')}): {data.get('statusMessage')}. Tentando reautenticar...")
+                if self.login():
+                    query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
+                    response = self.session.post(query_url, json=payload, timeout=30)
+                    response.raise_for_status()
+                    data = response.json()
+                    if data.get("status") != "1":
+                        logger.error(f"Erro Sankhya API após reautenticação: {data.get('statusMessage')}")
+                        return []
+                else:
+                    return []
 
             response_body = data.get("responseBody", {})
             fields = [f.get("name") if isinstance(f, dict) else f for f in response_body.get("fieldsMetadata", [])]
             rows = response_body.get("rows", [])
-            
+
             produtos = []
             for row in rows:
                 item = {}
@@ -229,7 +264,7 @@ class SankhyaAPIService:
                 if item:
                     produtos.append(self._normalizar_produto(item))
 
-            logger.info(f"Retornados {len(produtos)} produtos de revenda com a quantidade de vendas.")
+            logger.info(f"Retornados {len(produtos)} produtos de revenda do Sankhya com sucesso.")
             return produtos
 
         except Exception as e:
@@ -238,5 +273,8 @@ class SankhyaAPIService:
 
 
 def buscar_dados_estoque_vendas() -> List[Dict[str, Any]]:
+    """
+    Função de alto nível chamada pelas rotas da API (ex: /api/validades/produtos).
+    """
     service = SankhyaAPIService()
     return service.carregar_dados_estoque_vendas()

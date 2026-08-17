@@ -46,10 +46,10 @@
             <thead>
                 <tr>
                     <th style="width: 80px;">Código</th>
-                    <th style="width: 110px;">EAN</th>
-                    <th style="width: 110px;">Complemento</th>
+                    <th style="width: 130px;">EAN</th>
+                    <th style="width: 120px;">Complemento</th>
                     <th>Descrição</th>
-                    <th style="width: 140px;">Separador</th>
+                    <th style="width: 120px;">Separador</th>
                     <th style="width: 100px;">Estoque Atual</th>
                     <th style="width: 350px;">Lotes / Coletas (Qtd e Data Validade)</th>
                 </tr>
@@ -99,7 +99,7 @@
             const separadores = new Set();
 
             lista.forEach(p => {
-                const sep = obterValor(p, ['SEPARADOR', 'separador', 'AD_SEPARADOR', 'ad_separador', 'CODUSU', 'codusu', 'NOMEUSU', 'nomeusu']);
+                const sep = obterValor(p, ['separador', 'SEPARADOR', 'CODAREASEP', 'codareasep', 'AD_SEPARADOR']);
                 if (sep !== '-') separadores.add(sep);
             });
 
@@ -117,12 +117,12 @@
             }
 
             tbody.innerHTML = lista.map((p, idx) => {
-                const cod = obterValor(p, ['CODPROD', 'codprod', 'COD', 'cod', 'codigo', 'CODIGO']);
-                const ean = obterValor(p, ['EAN', 'ean', 'CODBARRA', 'codbarra', 'GTIN', 'gtin']);
-                const complemento = obterValor(p, ['COMPLEMENTO', 'complemento', 'COMPL', 'compl']);
-                const desc = obterValor(p, ['DESCRPROD', 'descrprod', 'DESCRICAO', 'descricao', 'DESC', 'desc']);
-                const separador = obterValor(p, ['SEPARADOR', 'separador', 'AD_SEPARADOR', 'ad_separador', 'CODUSU', 'codusu', 'NOMEUSU', 'nomeusu']);
-                const estoque = obterValor(p, ['ESTOQUE', 'estoque', 'ESTOQUEATUAL', 'QTDESTOQUE', 'qtdestoque', 'SALDO']);
+                const cod = obterValor(p, ['cod', 'CODPROD', 'codprod', 'COD']);
+                const ean = obterValor(p, ['ean', 'EAN', 'CODBARRA', 'codbarra']);
+                const complemento = obterValor(p, ['complemento', 'COMPLDESC', 'compldesc', 'COMPLEMENTO']);
+                const desc = obterValor(p, ['desc', 'DESCRPROD', 'descrprod', 'DESCRICAO']);
+                const separador = obterValor(p, ['separador', 'SEPARADOR', 'CODAREASEP', 'codareasep']);
+                const estoque = obterValor(p, ['estoque', 'ESTOQUE', 'QTDESTOQUE', 'SALDO']);
 
                 return `
                     <tr>
@@ -167,11 +167,11 @@
             const separadorSel = document.getElementById('selectSeparador').value.toLowerCase();
 
             const filtrados = produtosGerais.filter(p => {
-                const cod = String(obterValor(p, ['CODPROD', 'codprod', 'COD', 'cod', 'codigo'])).toLowerCase();
-                const ean = String(obterValor(p, ['EAN', 'ean', 'CODBARRA', 'codbarra'])).toLowerCase();
-                const complemento = String(obterValor(p, ['COMPLEMENTO', 'complemento', 'COMPL'])).toLowerCase();
-                const desc = String(obterValor(p, ['DESCRPROD', 'descrprod', 'DESCRICAO', 'descricao'])).toLowerCase();
-                const separador = String(obterValor(p, ['SEPARADOR', 'separador', 'AD_SEPARADOR', 'ad_separador', 'CODUSU', 'codusu', 'NOMEUSU'])).toLowerCase();
+                const cod = String(obterValor(p, ['cod', 'CODPROD', 'COD'])).toLowerCase();
+                const ean = String(obterValor(p, ['ean', 'EAN', 'CODBARRA'])).toLowerCase();
+                const complemento = String(obterValor(p, ['complemento', 'COMPLDESC'])).toLowerCase();
+                const desc = String(obterValor(p, ['desc', 'DESCRPROD'])).toLowerCase();
+                const separador = String(obterValor(p, ['separador', 'CODAREASEP'])).toLowerCase();
 
                 const bateTexto = cod.includes(termo) || ean.includes(termo) || complemento.includes(termo) || desc.includes(termo);
                 const bateSeparador = !separadorSel || separador === separadorSel;
