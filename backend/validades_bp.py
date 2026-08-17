@@ -30,13 +30,33 @@ def exportar_validades_excel():
             complemento = p.get("complemento", "")
             desc = p.get("desc", "")
             separador = p.get("separador", "")
-            estoque_atual = p.get("estoque", 0)
+            
+            try:
+                estoque_atual = float(p.get("estoque", 0))
+            except (ValueError, TypeError):
+                estoque_atual = 0.0
 
-            for lote in p.get("lotes", []):
-                qtd_coletada = lote.get("qtd")
+            lotes = p.get("lotes", [])
+            if not lotes:
+                continue
+
+            total_coletado = 0.0
+            detalhes_lotes = []
+
+            for lote in lotes:
+                qtd_raw = lote.get("qtd")
                 validade_raw = lote.get("validade", "")
 
-                # Formata a data para DD/MM/AAAA
+                if not qtd_raw and not validade_raw:
+                    continue
+
+                try:
+                    qtd_num = float(qtd_raw) if qtd_raw else 0.0
+                except (ValueError, TypeError):
+                    qtd_num = 0.0
+
+                total_coletado += qtd_num
+
                 validade_fmt = validade_raw
                 if validade_raw:
                     try:
@@ -44,25 +64,21 @@ def exportar_validades_excel():
                     except ValueError:
                         validade_fmt = validade_raw
 
-                if qtd_coletada or validade_fmt:
-                    try:
-                        qtd_num = float(qtd_coletada) if qtd_coletada else 0
-                        est_num = float(estoque_atual) if estoque_atual else 0
-                        diferenca = qtd_num - est_num
-                    except (ValueError, TypeError):
-                        diferenca = "-"
+                detalhes_lotes.append(f"{qtd_raw or 0} un em {validade_fmt}")
 
-                    linhas.append({
-                        "Código": cod,
-                        "EAN": ean,
-                        "Complemento": complemento,
-                        "Descrição do Produto": desc,
-                        "Separador": separador,
-                        "Estoque Atual (Sankhya)": estoque_atual,
-                        "Quantidade Coletada": qtd_coletada,
-                        "Diferença (Coletado - Estoque)": diferenca,
-                        "Data de Validade": validade_fmt
-                    })
+            if detalhes_lotes:
+                diferenca = total_coletado - estoque_atual
+                linhas.append({
+                    "Código": cod,
+                    "EAN": ean,
+                    "Complemento": complemento,
+                    "Descrição do Produto": desc,
+                    "Separador": separador,
+                    "Estoque Atual (Sankhya)": estoque_atual,
+                    "Total Coletado": total_coletado,
+                    "Diferença (Coletado - Estoque)": diferenca,
+                    "Detalhamento de Validades": " | ".join(detalhes_lotes)
+                })
 
         if not linhas:
             return jsonify({"error": "Nenhum lote preenchido."}), 400
