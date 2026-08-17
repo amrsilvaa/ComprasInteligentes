@@ -166,11 +166,9 @@
         </table>
     </div>
 
-    <!-- Script JavaScript para interação completa -->
     <script>
         let todosProdutos = [];
 
-        // 1. Busca os dados na API ao carregar a página
         async function carregarDados() {
             try {
                 const response = await fetch('/api/validades');
@@ -192,12 +190,10 @@
             }
         }
 
-        // 2. Preenche o select de separadores dinamicamente
         function popularSelectSeparadores(produtos) {
             const select = document.getElementById('selectSeparador');
             if (!select) return;
 
-            // Extrai lista única de separadores válidos
             const separadoresUnicos = [...new Set(
                 produtos
                     .map(p => p.separador)
@@ -214,7 +210,6 @@
             });
         }
 
-        // 3. Renderiza os produtos na tabela
         function renderizarTabela(produtos) {
             const tbody = document.getElementById('tabelaCorpo');
             if (!tbody) return;
@@ -256,7 +251,6 @@
             });
         }
 
-        // 4. Adiciona nova linha de lote/coleta para o produto
         function adicionarLote(containerId) {
             const container = document.getElementById(containerId);
             if (!container) return;
@@ -271,7 +265,6 @@
             container.appendChild(div);
         }
 
-        // 5. Filtro simultâneo por Busca textual e por Separador
         function filtrarTabela() {
             const termoBusca = document.getElementById('searchInput').value.toLowerCase().trim();
             const separadorSelecionado = document.getElementById('selectSeparador').value;
@@ -291,15 +284,12 @@
             renderizarTabela(produtosFiltrados);
         }
 
-        // 6. Exportação para CSV/Excel com as Validades Digitadas
         function exportarExcel() {
             let csv = 'Código;EAN;Complemento;Descrição;Separador;Estoque;Lotes/Validades\n';
             
-            // Pega todas as linhas da tabela renderizada na tela
             const linhas = document.querySelectorAll('#tabelaCorpo tr');
             
             linhas.forEach(linha => {
-                // Se for a linha de "Carregando" ou "Nenhum registro", ignora
                 if (linha.querySelector('td[colspan]')) return;
                 
                 const colunas = linha.querySelectorAll('td');
@@ -312,7 +302,6 @@
                 const separador = colunas[4].innerText.trim();
                 const estoque = colunas[5].innerText.trim();
                 
-                // Busca os inputs de Qtd e Data dentro desta linha
                 let dadosValidade = [];
                 const inputsQtd = linha.querySelectorAll('.input-qtd');
                 const inputsVal = linha.querySelectorAll('.input-val');
@@ -321,7 +310,6 @@
                     const qtd = inputsQtd[i].value;
                     let data = inputsVal[i].value;
                     
-                    // Formata a data de AAAA-MM-DD para DD/MM/AAAA (padrão Brasil) se estiver preenchida
                     if (data) {
                         const partes = data.split('-');
                         if (partes.length === 3) {
@@ -334,14 +322,16 @@
                     }
                 }
                 
-                // Junta tudo com " | "
-                const textoValidades = dadosValidade.length > 0 ? dadosValidade.join(' | ') : '';
+                // NOVO: Se não houver nada digitado nas validades/qtd, PULA a linha (não exporta)
+                if (dadosValidade.length === 0) return;
+                
+                // NOVO: Junta as validades com quebra de linha (\n) em vez de " | "
+                const textoValidades = dadosValidade.join('\n');
                 
                 // Adiciona a linha no CSV
                 csv += `"${codigo}";"${ean}";"${complemento}";"${descricao}";"${separador}";"${estoque}";"${textoValidades}"\n`;
             });
 
-            // Baixa o arquivo
             const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
@@ -349,7 +339,6 @@
             link.click();
         }
 
-        // Executa o carregamento inicial
         document.addEventListener('DOMContentLoaded', carregarDados);
     </script>
 </body>
