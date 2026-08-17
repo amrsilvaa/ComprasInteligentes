@@ -285,10 +285,11 @@
         }
 
         function exportarExcel() {
-            let csv = 'Código;EAN;Complemento;Descrição;Separador;Estoque;Lotes/Validades\n';
-            
             const linhas = document.querySelectorAll('#tabelaCorpo tr');
             
+            let dadosParaExportar = [];
+            let maxLotes = 0; // Vai descobrir quantas colunas de Qtd e Data precisa criar
+
             linhas.forEach(linha => {
                 if (linha.querySelector('td[colspan]')) return;
                 
@@ -300,14 +301,14 @@
                 const complemento = colunas[2].innerText.trim();
                 const descricao = colunas[3].innerText.trim().replace(/"/g, '""');
                 const separador = colunas[4].innerText.trim();
-                const estoque = colunas[5].innerText.trim();
+                const estoque = colunas[5].innerText.trim(); // Será chamado de Disponível
                 
-                let dadosValidade = [];
+                let lotesDestaLinha = [];
                 const inputsQtd = linha.querySelectorAll('.input-qtd');
                 const inputsVal = linha.querySelectorAll('.input-val');
                 
                 for (let i = 0; i < inputsQtd.length; i++) {
-                    const qtd = inputsQtd[i].value;
+                    const qtd = inputsQtd[i].value.trim();
                     let data = inputsVal[i].value;
                     
                     if (data) {
@@ -317,19 +318,59 @@
                         }
                     }
                     
+                    // Só adiciona se tiver digitado quantidade ou data
                     if (qtd || data) {
-                        dadosValidade.push(`${qtd ? qtd + ' UN' : '?'} -> ${data || 'Sem Data'}`);
+                        lotesDestaLinha.push({ qtd: qtd || '', data: data || '' });
                     }
                 }
                 
-                // NOVO: Se não houver nada digitado nas validades/qtd, PULA a linha (não exporta)
-                if (dadosValidade.length === 0) return;
+                // Se a linha teve alguma validade preenchida, salva para exportar
+                if (lotesDestaLinha.length > 0) {
+                    if (lotesDestaLinha.length > maxLotes) {
+                        maxLotes = lotesDestaLinha.length;
+                    }
+                    dadosParaExportar.push({
+                        codigo, ean, complemento, descricao, separador, estoque, lotes: lotesDestaLinha
+                    });
+                }
+            });
+
+            if (dadosParaExportar.length === 0) {
+                alert("Nenhum produto com validade preenchida para exportar.");
+                return;
+            }
+
+            // Monta o cabeçalho dinamicamente
+            let cabecalho = ['Código', 'EAN', 'Complemento', 'Descrição', 'Separador', 'Disponível'];
+            for (let i = 1; i <= maxLotes; i++) {
+                cabecalho.push(`Qtd_${i}`);
+                cabecalho.push(`Data_${i}`);
+            }
+            
+            let csv = cabecalho.join(';') + '\n';
+
+            // Monta as linhas
+            dadosParaExportar.forEach(item => {
+                let linhaCSV = [
+                    `"${item.codigo}"`, 
+                    `"${item.ean}"`, 
+                    `"${item.complemento}"`, 
+                    `"${item.descricao}"`, 
+                    `"${item.separador}"`, 
+                    `"${item.estoque}"`
+                ];
                 
-                // NOVO: Junta as validades com quebra de linha (\n) em vez de " | "
-                const textoValidades = dadosValidade.join('\n');
-                
-                // Adiciona a linha no CSV
-                csv += `"${codigo}";"${ean}";"${complemento}";"${descricao}";"${separador}";"${estoque}";"${textoValidades}"\n`;
+                for (let i = 0; i < maxLotes; i++) {
+                    if (i < item.lotes.length) {
+                        linhaCSV.push(`"${item.lotes[i].qtd}"`);
+                        linhaCSV.push(`"${item.lotes[i].data}"`);
+                    } else {
+                        // Se esse produto teve menos lotes que o máximo, preenche vazio
+                        linhaCSV.push('""'); 
+                        linhaCSV.push('""'); 
+                    }
+                }
+                csv += linhaCSV.join(';') + '\n';
             });
 
             const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
