@@ -429,6 +429,33 @@ function imprimirListaCompras() {
 }
 
 // ============================================================
+// INTEGRAÇÃO WHATSAPP E ALERTAS (NOVO)
+// ============================================================
+
+async function dispararAlertaWhatsApp() {
+    if (!confirm("Deseja enviar o resumo dos itens para reposição no WhatsApp (33 99931-7139)?")) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API}/api/whatsapp/disparar-alerta`, { method: "POST" });
+        
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        
+        const data = await res.json();
+        
+        if (data.sucesso) {
+            alert("✅ Alerta de compras enviado com sucesso para o WhatsApp!");
+        } else {
+            alert("⚠️ Aviso: " + (data.erro || data.mensagem || "Erro ao conectar com a API de envio."));
+        }
+    } catch (err) {
+        console.error("Erro ao disparar WhatsApp:", err);
+        alert("❌ Erro de comunicação com o servidor ao tentar enviar o WhatsApp. Verifique se o backend está rodando.");
+    }
+}
+
+// ============================================================
 // INICIALIZAÇÃO
 // ============================================================
 

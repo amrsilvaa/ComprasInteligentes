@@ -12,11 +12,16 @@
     <!-- Botões Superiores (Ações do Usuário e Exportação) -->
     <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
       
-      <!-- Ações de Exportação Excel -->
+      <!-- Ações de Exportação Excel e WhatsApp -->
       <div class="flex gap-2">
+        <button 
+          onclick="dispararAlertaWhatsApp()" 
+          class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-2">
+          📱 Alerta WhatsApp
+        </button>
         <a 
           href="/api/estoque/exportar-excel?apenas_repor=true" 
-          class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-2">
+          class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-2">
           📊 Baixar Apenas "REPOR" (.xlsx)
         </a>
         <a 
@@ -205,6 +210,26 @@
     document.getElementById('searchInput').addEventListener('input', () => {
       renderizarTabela(filtrarProdutos());
     });
+
+    // --- NOVA FUNÇÃO: DISPARAR ALERTA WHATSAPP ---
+    async function dispararAlertaWhatsApp() {
+      if (!confirm("Deseja enviar o resumo dos itens para reposição no WhatsApp (33 99931-7139)?")) {
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/whatsapp/disparar-alerta", { method: "POST" });
+        const data = await res.json();
+        
+        if (data.sucesso) {
+          alert("Alerta de compras enviado com sucesso para o WhatsApp!");
+        } else {
+          alert("Aviso: " + (data.erro || data.mensagem || "Erro ao conectar com a API de envio. Verifique a configuração da API no backend."));
+        }
+      } catch (err) {
+        alert("Erro de comunicação com o servidor.");
+      }
+    }
 
     // Função de Autenticação WebAuthn (Face ID)
     async function cadastrarFaceID() {
