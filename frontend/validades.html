@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Coleta de Validades e Análise de Estoque</title>
     
-    <!-- CSS Embutido (Removido o link para style.css que gerava erro 404) -->
     <style>
         * {
             box-sizing: border-box;
@@ -292,13 +291,57 @@
             renderizarTabela(produtosFiltrados);
         }
 
-        // 6. Exportação rápida para CSV/Excel
+        // 6. Exportação para CSV/Excel com as Validades Digitadas
         function exportarExcel() {
-            let csv = 'Código;EAN;Complemento;Descrição;Separador;Estoque\n';
-            todosProdutos.forEach(p => {
-                csv += `"${p.codigo}";"${p.ean}";"${p.complemento}";"${p.descricao}";"${p.separador}";"${p.estoque}"\n`;
+            let csv = 'Código;EAN;Complemento;Descrição;Separador;Estoque;Lotes/Validades\n';
+            
+            // Pega todas as linhas da tabela renderizada na tela
+            const linhas = document.querySelectorAll('#tabelaCorpo tr');
+            
+            linhas.forEach(linha => {
+                // Se for a linha de "Carregando" ou "Nenhum registro", ignora
+                if (linha.querySelector('td[colspan]')) return;
+                
+                const colunas = linha.querySelectorAll('td');
+                if (colunas.length < 7) return;
+
+                const codigo = colunas[0].innerText.trim();
+                const ean = colunas[1].innerText.trim();
+                const complemento = colunas[2].innerText.trim();
+                const descricao = colunas[3].innerText.trim().replace(/"/g, '""');
+                const separador = colunas[4].innerText.trim();
+                const estoque = colunas[5].innerText.trim();
+                
+                // Busca os inputs de Qtd e Data dentro desta linha
+                let dadosValidade = [];
+                const inputsQtd = linha.querySelectorAll('.input-qtd');
+                const inputsVal = linha.querySelectorAll('.input-val');
+                
+                for (let i = 0; i < inputsQtd.length; i++) {
+                    const qtd = inputsQtd[i].value;
+                    let data = inputsVal[i].value;
+                    
+                    // Formata a data de AAAA-MM-DD para DD/MM/AAAA (padrão Brasil) se estiver preenchida
+                    if (data) {
+                        const partes = data.split('-');
+                        if (partes.length === 3) {
+                            data = `${partes[2]}/${partes[1]}/${partes[0]}`;
+                        }
+                    }
+                    
+                    if (qtd || data) {
+                        dadosValidade.push(`${qtd ? qtd + ' UN' : '?'} -> ${data || 'Sem Data'}`);
+                    }
+                }
+                
+                // Junta tudo com " | "
+                const textoValidades = dadosValidade.length > 0 ? dadosValidade.join(' | ') : '';
+                
+                // Adiciona a linha no CSV
+                csv += `"${codigo}";"${ean}";"${complemento}";"${descricao}";"${separador}";"${estoque}";"${textoValidades}"\n`;
             });
 
+            // Baixa o arquivo
             const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);

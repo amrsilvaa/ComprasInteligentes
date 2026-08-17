@@ -463,3 +463,74 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("Compras Inteligentes iniciado.");
     carregarDados();
 });
+// ============================================================
+// EXPORTAÇÃO DE VALIDADES COM AS DATAS PREENCHIDAS
+// ============================================================
+
+function exportarValidadesParaExcel() {
+    // Busca a tabela da tela (ajuste o ID se a sua tabela tiver um ID específico)
+    const tabela = document.querySelector("table"); 
+    if (!tabela) {
+        alert("Tabela não encontrada na tela.");
+        return;
+    }
+
+    let csv = [];
+    const linhas = tabela.querySelectorAll("tr");
+
+    for (let i = 0; i < linhas.length; i++) {
+        let linhaCSV = [];
+        const celulas = linhas[i].querySelectorAll("th, td");
+
+        // Ignora a última coluna (que são os botões de + e -) para deixar o Excel limpo
+        const limiteColunas = i === 0 ? celulas.length : celulas.length - 1; 
+
+        for (let j = 0; j < limiteColunas; j++) {
+            let celula = celulas[j];
+            
+            // Verifica se a célula tem inputs (caixas de quantidade e data)
+            const inputs = celula.querySelectorAll("input");
+            
+            if (inputs.length > 0) {
+                let valoresColetados = [];
+                // Os inputs vêm em pares: [Quantidade, Data]
+                for (let k = 0; k < inputs.length; k += 2) {
+                    const qtd = inputs[k] ? inputs[k].value : "";
+                    const data = inputs[k+1] ? inputs[k+1].value : "";
+                    
+                    // Só adiciona se o usuário tiver preenchido pelo menos um dos dois
+                    if (qtd || data) {
+                        valoresColetados.push(`${qtd} UN -> ${data}`);
+                    }
+                }
+                
+                // Junta os lotes com um "|" para ficar na mesma célula do Excel
+                if (valoresColetados.length > 0) {
+                    linhaCSV.push(`"${valoresColetados.join(" | ")}"`);
+                } else {
+                    linhaCSV.push('""'); // Célula vazia se não preencheu nada
+                }
+            } else {
+                // Se for uma célula normal (Nome do Produto, etc)
+                let texto = celula.innerText.replace(/"/g, '""').trim();
+                linhaCSV.push(`"${texto}"`);
+            }
+        }
+        // Junta as colunas separando por ponto e vírgula
+        csv.push(linhaCSV.join(";"));
+    }
+
+    // Cria o arquivo Excel/CSV e força o download
+    let csvContent = "\uFEFF" + csv.join("\n"); // \uFEFF força o padrão do Excel
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    
+    // Nome do arquivo
+    link.setAttribute("href", url);
+    link.setAttribute("download", "Coleta_de_Validades.csv");
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
