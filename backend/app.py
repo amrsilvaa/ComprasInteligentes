@@ -8,6 +8,7 @@ from flask import Flask, jsonify, render_template, request, session, redirect, u
 from dotenv import load_dotenv
 
 from backend.services.sankhya_service import buscar_dados_estoque_vendas
+from whatsapp_service import enviar_alerta_compras
 
 # WebAuthn para Face ID / Biometria
 from webauthn import (
@@ -235,6 +236,28 @@ def get_sankhya():
         return jsonify({"sucesso": True, "produtos": dados})
     except Exception as e:
         logger.error(f"Erro na rota /api/sankhya: {str(e)}")
+        return jsonify({"sucesso": False, "error": str(e)}), 500
+
+
+# --- ROTA DE ALERTA VIA WHATSAPP ---
+
+@app.route("/api/whatsapp/disparar-alerta", methods=["POST"])
+@login_required
+def disparar_alerta_whatsapp():
+    try:
+        dados = buscar_dados_estoque_vendas()
+        produtos = dados.get("produtos", []) if isinstance(dados, dict) else dados
+
+        produtos_repor = [
+            p for p in produtos
+            if float(p.get("SUGESTAO_COMPRA", p.get("sugestao_compra", 0))) > 0
+            or str(p.get("STATUS", p.get("status", ""))).upper() == "REPOR"
+        ]
+
+        resultado = enviar_alerta_compras(produtos_repor)
+        return jsonify(resultado)
+    except Exception as e:
+        logger.error(f"Erro no disparo de WhatsApp: {str(e)}")
         return jsonify({"sucesso": False, "error": str(e)}), 500
 
 
