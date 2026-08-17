@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 from flask import Flask, jsonify, render_template, request, session, redirect, url_for, send_file, Response
 from dotenv import load_dotenv
+from flask_apscheduler import APScheduler
 
 from backend.services.sankhya_service import buscar_dados_estoque_vendas
 
@@ -44,15 +45,12 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder="../frontend", template_folder="../frontend")
 app.secret_key = os.getenv("SECRET_KEY", "chave-secreta-sankhya-compras-2026")
 
-# Usuário e Senha Padrão de Acesso (configurável no .env)
 ADMIN_USER = os.getenv("APP_USER", "admin")
 ADMIN_PASS = os.getenv("APP_PASSWORD", "123456")
 
-# Nome de exibição do App para a chave de segurança
 RP_ID = os.getenv("RP_ID", "comprasinteligentes.onrender.com")
 RP_NAME = "Compras Inteligentes"
 
-# Banco em memória/arquivo simples para credenciais salvas do Face ID
 CREDENTIALS_FILE = Path(__file__).resolve().parent / "user_credentials.json"
 
 
@@ -72,6 +70,49 @@ def save_credentials(data):
 
 
 db_credentials = load_credentials()
+
+
+# --- AGENDADOR AUTOMÁTICO DE WHATSAPP ---
+
+class SchedulerConfig:
+    SCHEDULER_API_ENABLED = False
+
+app.config.from_object(SchedulerConfig())
+scheduler = APScheduler()
+
+
+def job_verificacao_automatica_whatsapp():
+    """
+    Função executada automaticamente pelo agendador.
+    Consulta o Sankhya e envia o resumo de compras no WhatsApp.
+    """
+    with app.app_context():
+        try:
+            logger.info("🤖 [AUTOMÁTICO] Verificando estoque no Sankhya para envio de alerta...")
+            if not enviar_alerta_compras:
+                logger.warning("🤖 [AUTOMÁTICO] Módulo do WhatsApp não configurado.")
+                return
+
+            dados = buscar_dados_estoque_vendas()
+            resultado = enviar_alerta_compras(dados)
+            logger.info(f"🤖 [AUTOMÁTICO] Resultado do envio do WhatsApp: {resultado}")
+        except Exception as e:
+            logger.error(f"🤖 [AUTOMÁTICO] Erro na verificação automática: {e}")
+
+
+# Inicializa o agendador no Flask
+scheduler.init_app(app)
+scheduler.start()
+
+# Configuração do intervalo de disparo automático (A cada 2 horas)
+# Caso prefira horário fixo (ex: todo dia às 08:00), use: trigger="cron", hour=8, minute=0
+scheduler.add_job(
+    id="alerta_whatsapp_automatico",
+    func=job_verificacao_automatica_whatsapp,
+    trigger="interval",
+    hours=2,
+    replace_existing=True
+)
 
 
 # Middleware de Checagem de Autenticação
@@ -248,7 +289,7 @@ def get_sankhya():
         return jsonify({"sucesso": False, "error": str(e)}), 500
 
 
-# --- ROTA DO WHATSAPP ---
+# --- ROTA MANUAL DO WHATSAPP ---
 
 @app.route("/api/whatsapp/disparar-alerta", methods=["POST", "GET"])
 @login_required
