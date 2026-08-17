@@ -4,11 +4,10 @@ import logging
 import io
 from pathlib import Path
 import pandas as pd
-from flask import Flask, jsonify, render_template, request, session, redirect, url_for, send_file
+from flask import Flask, jsonify, render_template, request, session, redirect, url_for, send_file, Response
 from dotenv import load_dotenv
 
 from backend.services.sankhya_service import buscar_dados_estoque_vendas
-from whatsapp_service import enviar_alerta_compras
 
 # WebAuthn para Face ID / Biometria
 from webauthn import (
@@ -16,6 +15,7 @@ from webauthn import (
     verify_registration_response,
     generate_authentication_options,
     verify_authentication_response,
+    options_to_json,
 )
 from webauthn.helpers.structs import (
     PublicKeyCredentialRpEntity,
@@ -125,7 +125,7 @@ def webauthn_register_options():
     )
     
     session["webauthn_challenge"] = options.challenge.hex()
-    return options.to_json()
+    return Response(options_to_json(options), mimetype="application/json")
 
 
 @app.route("/api/webauthn/register-verify", methods=["POST"])
@@ -165,7 +165,7 @@ def webauthn_login_options():
         user_verification=UserVerificationRequirement.PREFERRED,
     )
     session["webauthn_challenge"] = options.challenge.hex()
-    return options.to_json()
+    return Response(options_to_json(options), mimetype="application/json")
 
 
 @app.route("/api/webauthn/login-verify", methods=["POST"])
@@ -236,28 +236,6 @@ def get_sankhya():
         return jsonify({"sucesso": True, "produtos": dados})
     except Exception as e:
         logger.error(f"Erro na rota /api/sankhya: {str(e)}")
-        return jsonify({"sucesso": False, "error": str(e)}), 500
-
-
-# --- ROTA DE ALERTA VIA WHATSAPP ---
-
-@app.route("/api/whatsapp/disparar-alerta", methods=["POST"])
-@login_required
-def disparar_alerta_whatsapp():
-    try:
-        dados = buscar_dados_estoque_vendas()
-        produtos = dados.get("produtos", []) if isinstance(dados, dict) else dados
-
-        produtos_repor = [
-            p for p in produtos
-            if float(p.get("SUGESTAO_COMPRA", p.get("sugestao_compra", 0))) > 0
-            or str(p.get("STATUS", p.get("status", ""))).upper() == "REPOR"
-        ]
-
-        resultado = enviar_alerta_compras(produtos_repor)
-        return jsonify(resultado)
-    except Exception as e:
-        logger.error(f"Erro no disparo de WhatsApp: {str(e)}")
         return jsonify({"sucesso": False, "error": str(e)}), 500
 
 
