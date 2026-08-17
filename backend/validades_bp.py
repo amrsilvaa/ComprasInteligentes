@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, jsonify, request
 import logging
-# Importe o seu serviço Sankhya aqui (ajuste a importação conforme o nome do seu módulo)
-from backend.sankhya_service import executar_query
+
+# Importação correta com base na sua pasta backend/services/
+from backend.services.sankhya_service import executar_query
 
 validades_bp = Blueprint('validades', __name__)
 
@@ -31,13 +32,15 @@ def get_validades():
             ORDER BY P.DESCRPROD ASC
         """
 
-        # Executa a consulta no Sankhya
+        # Executa a consulta chamando o módulo correto
         registros = executar_query(query) or []
 
         produtos_formatados = []
 
         for row in registros:
-            # Garante leitura tanto por chave de dicionário quanto maiúscula/minúscula
+            if not isinstance(row, dict):
+                continue
+
             separador_val = str(row.get('separador') or row.get('AD_SEPARADOR') or '-').strip()
             if not separador_val or separador_val.upper() in ['NONE', 'NULL']:
                 separador_val = '-'
