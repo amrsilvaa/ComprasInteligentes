@@ -10,6 +10,9 @@ from flask_apscheduler import APScheduler
 
 from backend.services.sankhya_service import buscar_dados_estoque_vendas
 
+# Importação do Blueprint isolado de Validades
+from backend.validades_bp import validades_bp
+
 # Importação segura do serviço do WhatsApp
 try:
     from backend.whatsapp_service import enviar_alerta_compras
@@ -45,6 +48,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder="../frontend", template_folder="../frontend")
 app.secret_key = os.getenv("SECRET_KEY", "chave-secreta-sankhya-compras-2026")
 
+# REGISTRO DO BLUEPRINT DE VALIDADES (Módulos Isolados)
+app.register_blueprint(validades_bp)
+
 ADMIN_USER = os.getenv("APP_USER", "admin")
 ADMIN_PASS = os.getenv("APP_PASSWORD", "123456")
 
@@ -72,7 +78,7 @@ def save_credentials(data):
 db_credentials = load_credentials()
 
 
-# --- AGENDADOR AUTOMÁTICO DE WHATSAPP ---
+# --- AGENDADOR AUTOMÁTICO DE WHATSAPP (COMPRAS) ---
 
 class SchedulerConfig:
     SCHEDULER_API_ENABLED = False
@@ -105,7 +111,6 @@ scheduler.init_app(app)
 scheduler.start()
 
 # Configuração do intervalo de disparo automático (A cada 2 horas)
-# Caso prefira horário fixo (ex: todo dia às 08:00), use: trigger="cron", hour=8, minute=0
 scheduler.add_job(
     id="alerta_whatsapp_automatico",
     func=job_verificacao_automatica_whatsapp,
@@ -267,6 +272,13 @@ def index():
     return app.send_static_file("index.html")
 
 
+@app.route("/validades")
+@login_required
+def validades_page():
+    """Renderiza a página exclusiva do Módulo de Validades"""
+    return app.send_static_file("validades.html")
+
+
 @app.route("/api/estoque", methods=["GET"])
 @login_required
 def get_estoque():
@@ -289,7 +301,7 @@ def get_sankhya():
         return jsonify({"sucesso": False, "error": str(e)}), 500
 
 
-# --- ROTA MANUAL DO WHATSAPP ---
+# --- ROTA MANUAL DO WHATSAPP (COMPRAS) ---
 
 @app.route("/api/whatsapp/disparar-alerta", methods=["POST", "GET"])
 @login_required
@@ -306,7 +318,7 @@ def disparar_alerta_whatsapp():
         return jsonify({"sucesso": False, "error": str(e)}), 500
 
 
-# --- ROTA DE EXPORTAÇÃO PARA EXCEL ---
+# --- ROTA DE EXPORTAÇÃO PARA EXCEL (COMPRAS) ---
 
 @app.route("/api/estoque/exportar-excel", methods=["GET"])
 @login_required
