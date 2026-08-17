@@ -1,7 +1,58 @@
-<script>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coleta de Validades</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        body { font-family: sans-serif; background-color: #f8fafc; margin: 0; padding: 0; }
+        .container { max-width: 1100px; margin: 20px auto; padding: 20px; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .actions-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .search-input { flex: 1; padding: 10px; font-size: 16px; min-width: 250px; border: 1px solid #cbd5e0; border-radius: 4px; }
+        .btn { padding: 10px 18px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-success { background-color: #2f855a; color: white; }
+        .btn-secondary { background-color: #718096; color: white; text-decoration: none; display: inline-block; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; }
+        th { background-color: #f7fafc; font-weight: 600; }
+        input[type="date"], input[type="number"] { padding: 6px; width: 100%; box-sizing: border-box; border: 1px solid #cbd5e0; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-bar">
+            <h1>📅 Coleta de Validades</h1>
+            <a href="/" class="btn btn-secondary">← Voltar para Compras</a>
+        </div>
+
+        <div class="actions-bar">
+            <input type="text" id="searchInput" class="search-input" placeholder="Buscar por Código, EAN ou Descrição..." onkeyup="filtrarTabela()">
+            <button class="btn btn-success" onclick="exportarExcel()">📊 Exportar para Excel</button>
+        </div>
+
+        <table id="tabelaValidades">
+            <thead>
+                <tr>
+                    <th style="width: 100px;">Código</th>
+                    <th style="width: 140px;">EAN</th>
+                    <th>Descrição</th>
+                    <th style="width: 130px;">Qtd. Coletada</th>
+                    <th style="width: 160px;">Data Validade</th>
+                </tr>
+            </thead>
+            <tbody id="corpoTabela">
+                <tr>
+                    <td colspan="5" style="text-align: center; color: #718096;">Carregando produtos...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
         let produtosGerais = [];
 
-        // Função auxiliar para buscar valor em múltiplas variações de chaves
         function obterValor(obj, chaves) {
             for (const key of chaves) {
                 if (obj && obj[key] !== undefined && obj[key] !== null && obj[key] !== '') {
@@ -18,7 +69,6 @@
                 
                 if (json.sucesso && json.produtos) {
                     produtosGerais = Array.isArray(json.produtos) ? json.produtos : (json.produtos.dados || []);
-                    console.log('Dados recebidos:', produtosGerais); // Para inspeção no console F12
                     renderizarTabela(produtosGerais);
                 } else {
                     document.getElementById('corpoTabela').innerHTML = 
@@ -33,7 +83,7 @@
 
         function renderizarTabela(lista) {
             const tbody = document.getElementById('corpoTabela');
-            if (!lista.length) {
+            if (!lista || !lista.length) {
                 tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Nenhum produto encontrado.</td></tr>';
                 return;
             }
@@ -44,7 +94,7 @@
                 const desc = obterValor(p, ['DESCRPROD', 'descrprod', 'DESCRICAO', 'descricao', 'DESC', 'desc', 'NOME', 'nome']);
 
                 return `
-                    <tr data-cod="${cod}">
+                    <tr>
                         <td>${cod}</td>
                         <td>${ean}</td>
                         <td>${desc}</td>
@@ -122,3 +172,5 @@
 
         window.onload = carregarProdutos;
     </script>
+</body>
+</html>
