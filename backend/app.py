@@ -9,6 +9,15 @@ from dotenv import load_dotenv
 
 from backend.services.sankhya_service import buscar_dados_estoque_vendas
 
+# Importação segura do serviço do WhatsApp
+try:
+    from backend.whatsapp_service import enviar_alerta_compras
+except ImportError:
+    try:
+        from backend.services.whatsapp_service import enviar_alerta_compras
+    except ImportError:
+        enviar_alerta_compras = None
+
 # WebAuthn para Face ID / Biometria
 from webauthn import (
     generate_registration_options,
@@ -239,13 +248,29 @@ def get_sankhya():
         return jsonify({"sucesso": False, "error": str(e)}), 500
 
 
+# --- ROTA DO WHATSAPP ---
+
+@app.route("/api/whatsapp/disparar-alerta", methods=["POST", "GET"])
+@login_required
+def disparar_alerta_whatsapp():
+    try:
+        if not enviar_alerta_compras:
+            return jsonify({"sucesso": False, "error": "Módulo do WhatsApp não configurado"}), 500
+        
+        dados = buscar_dados_estoque_vendas()
+        res = enviar_alerta_compras(dados)
+        return jsonify({"sucesso": True, "resultado": res})
+    except Exception as e:
+        logger.error(f"Erro na rota do WhatsApp: {str(e)}")
+        return jsonify({"sucesso": False, "error": str(e)}), 500
+
+
 # --- ROTA DE EXPORTAÇÃO PARA EXCEL ---
 
 @app.route("/api/estoque/exportar-excel", methods=["GET"])
 @login_required
 def exportar_excel():
     try:
-        # Se 'apenas_repor' for true na URL, filtra apenas itens que precisam de compra
         apenas_repor = request.args.get("apenas_repor", "false").lower() == "true"
         
         dados = buscar_dados_estoque_vendas()
@@ -254,7 +279,6 @@ def exportar_excel():
 
         df = pd.DataFrame(dados)
 
-        # Filtra os dados caso necessário
         if apenas_repor and "STATUS" in df.columns:
             df = df[df["STATUS"] == "REPOR"]
 
