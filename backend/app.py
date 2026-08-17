@@ -1,8 +1,10 @@
 import os
 import json
 import logging
+import io
 from pathlib import Path
-from flask import Flask, jsonify, render_template, request, session, redirect, url_for
+import pandas as pd
+from flask import Flask, jsonify, render_template, request, session, redirect, url_for, send_file
 from dotenv import load_dotenv
 
 from backend.services.sankhya_service import buscar_dados_estoque_vendas
@@ -22,6 +24,7 @@ from webauthn.helpers.structs import (
     AuthenticatorAttachment,
 )
 
+# Carrega variáveis de ambiente
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
@@ -224,7 +227,6 @@ def get_estoque():
         return jsonify({"error": str(e)}), 500
 
 
-# Rota adicional exigida pelo index.html
 @app.route("/api/sankhya", methods=["GET"])
 @login_required
 def get_sankhya():
@@ -234,6 +236,43 @@ def get_sankhya():
     except Exception as e:
         logger.error(f"Erro na rota /api/sankhya: {str(e)}")
         return jsonify({"sucesso": False, "error": str(e)}), 500
+
+
+# --- ROTA DE EXPORTAÇÃO PARA EXCEL ---
+
+@app.route("/api/estoque/exportar-excel", methods=["GET"])
+@login_required
+def exportar_excel():
+    try:
+        # Se 'apenas_repor' for true na URL, filtra apenas itens que precisam de compra
+        apenas_repor = request.args.get("apenas_repor", "false").lower() == "true"
+        
+        dados = buscar_dados_estoque_vendas()
+        if not dados:
+            return jsonify({"error": "Nenhum dado retornado do Sankhya"}), 404
+
+        df = pd.DataFrame(dados)
+
+        # Filtra os dados caso necessário
+        if apenas_repor and "STATUS" in df.columns:
+            df = df[df["STATUS"] == "REPOR"]
+
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name="Sugestao_Compras", index=False)
+        output.seek(0)
+
+        filename = "sugestao_compras_repor.xlsx" if apenas_repor else "sugestao_compras_completo.xlsx"
+
+        return send_file(
+            output,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        logger.error(f"Erro ao gerar relatório Excel: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
