@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, jsonify, request
 import logging
+# Importe o seu serviço Sankhya aqui (ajuste a importação conforme o nome do seu módulo)
+from sankhya_service import executar_query  
 
-# Configuração do Blueprint
 validades_bp = Blueprint('validades', __name__)
 
 @validades_bp.route('/validades')
@@ -16,7 +17,6 @@ def get_validades():
     Retorna a lista de produtos com Código, EAN, Complemento, Descrição, Separador e Estoque.
     """
     try:
-        # Exemplo de consulta SQL (ajuste a consulta ou chamada da API Sankhya conforme seu ambiente)
         query = """
             SELECT 
                 P.CODPROD AS codigo,
@@ -31,18 +31,13 @@ def get_validades():
             ORDER BY P.DESCRPROD ASC
         """
 
-        # Substitua a lista abaixo pela execução real da sua query/serviço do Sankhya:
-        # Exemplo de execução via banco/serviço:
-        # registros = executar_query(query)
-        
-        # Estruturação padronizada do retorno JSON
+        # Executa a consulta no Sankhya
+        registros = executar_query(query) or []
+
         produtos_formatados = []
-        
-        # Caso utilize uma lista de dicionários vinda da consulta:
-        # (Se já tiver a lista da sua consulta real, altere aqui)
-        registros = [] # Preenchido pela sua integração de banco/Sankhya
 
         for row in registros:
+            # Garante leitura tanto por chave de dicionário quanto maiúscula/minúscula
             separador_val = str(row.get('separador') or row.get('AD_SEPARADOR') or '-').strip()
             if not separador_val or separador_val.upper() in ['NONE', 'NULL']:
                 separador_val = '-'
