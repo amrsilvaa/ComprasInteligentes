@@ -1,100 +1,75 @@
-import os
-import io
+from flask import Blueprint, render_template, jsonify, request
 import logging
-import pandas as pd
-from datetime import datetime
-from flask import Blueprint, request, jsonify, send_file
-from backend.services.sankhya_service import buscar_dados_estoque_vendas
 
-logger = logging.getLogger(__name__)
+# Configuração do Blueprint
+validades_bp = Blueprint('validades', __name__)
 
-validades_bp = Blueprint("validades", __name__, url_prefix="/api/validades")
+@validades_bp.route('/validades')
+def pagina_validades():
+    """Renderiza a página principal do módulo de validades."""
+    return render_template('validades.html')
 
-@validades_bp.route("/produtos", methods=["GET"])
-def listar_produtos_validades():
+
+@validades_bp.route('/api/validades', methods=['GET'])
+def get_validades():
+    """
+    Retorna a lista de produtos com Código, EAN, Complemento, Descrição, Separador e Estoque.
+    """
     try:
-        dados = buscar_dados_estoque_vendas()
-        return jsonify({"sucesso": True, "produtos": dados})
+        # Exemplo de consulta SQL (ajuste a consulta ou chamada da API Sankhya conforme seu ambiente)
+        query = """
+            SELECT 
+                P.CODPROD AS codigo,
+                COALESCE(P.INTEGRAPROD, P.EAN, '-') AS ean,
+                COALESCE(CAST(P.COMPLEMENTO AS VARCHAR), '-') AS complemento,
+                COALESCE(P.DESCRPROD, '-') AS descricao,
+                COALESCE(P.AD_SEPARADOR, P.SEPARADOR, '-') AS separador,
+                COALESCE(E.ESTOQUE, 0) AS estoque
+            FROM TGFPRO P
+            LEFT JOIN TGFEST E ON P.CODPROD = E.CODPROD
+            WHERE P.ATIVO = 'S'
+            ORDER BY P.DESCRPROD ASC
+        """
+
+        # Substitua a lista abaixo pela execução real da sua query/serviço do Sankhya:
+        # Exemplo de execução via banco/serviço:
+        # registros = executar_query(query)
+        
+        # Estruturação padronizada do retorno JSON
+        produtos_formatados = []
+        
+        # Caso utilize uma lista de dicionários vinda da consulta:
+        # (Se já tiver a lista da sua consulta real, altere aqui)
+        registros = [] # Preenchido pela sua integração de banco/Sankhya
+
+        for row in registros:
+            separador_val = str(row.get('separador') or row.get('AD_SEPARADOR') or '-').strip()
+            if not separador_val or separador_val.upper() in ['NONE', 'NULL']:
+                separador_val = '-'
+
+            complemento_val = str(row.get('complemento') or row.get('COMPLEMENTO') or '-').strip()
+            if not complemento_val or complemento_val.upper() in ['NONE', 'NULL']:
+                complemento_val = '-'
+
+            produtos_formatados.append({
+                "codigo": str(row.get('codigo') or row.get('CODPROD') or '0'),
+                "ean": str(row.get('ean') or row.get('INTEGRAPROD') or '-').strip(),
+                "complemento": complemento_val,
+                "descricao": str(row.get('descricao') or row.get('DESCRPROD') or '').strip(),
+                "separador": separador_val,
+                "estoque": float(row.get('estoque') or row.get('ESTOQUE') or 0)
+            })
+
+        return jsonify({
+            "status": "success",
+            "total": len(produtos_formatados),
+            "data": produtos_formatados
+        }), 200
+
     except Exception as e:
-        logger.error(f"Erro ao carregar produtos para validades: {e}")
-        return jsonify({"sucesso": False, "erro": str(e)}), 500
-
-@validades_bp.route("/exportar-excel", methods=["POST"])
-def exportar_validades_excel():
-    try:
-        dados = request.json or []
-        linhas = []
-        for p in dados:
-            cod = p.get("cod", "")
-            ean = p.get("ean", "")
-            complemento = p.get("complemento", "")
-            desc = p.get("desc", "")
-            separador = p.get("separador", "")
-            
-            try:
-                estoque_atual = float(p.get("estoque", 0))
-            except (ValueError, TypeError):
-                estoque_atual = 0.0
-
-            lotes = p.get("lotes", [])
-            if not lotes:
-                continue
-
-            total_coletado = 0.0
-            detalhes_lotes = []
-
-            for lote in lotes:
-                qtd_raw = lote.get("qtd")
-                validade_raw = lote.get("validade", "")
-
-                if not qtd_raw and not validade_raw:
-                    continue
-
-                try:
-                    qtd_num = float(qtd_raw) if qtd_raw else 0.0
-                except (ValueError, TypeError):
-                    qtd_num = 0.0
-
-                total_coletado += qtd_num
-
-                validade_fmt = validade_raw
-                if validade_raw:
-                    try:
-                        validade_fmt = datetime.strptime(validade_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
-                    except ValueError:
-                        validade_fmt = validade_raw
-
-                detalhes_lotes.append(f"{qtd_raw or 0} un em {validade_fmt}")
-
-            if detalhes_lotes:
-                diferenca = total_coletado - estoque_atual
-                linhas.append({
-                    "Código": cod,
-                    "EAN": ean,
-                    "Complemento": complemento,
-                    "Descrição do Produto": desc,
-                    "Separador": separador,
-                    "Estoque Atual (Sankhya)": estoque_atual,
-                    "Total Coletado": total_coletado,
-                    "Diferença (Coletado - Estoque)": diferenca,
-                    "Detalhamento de Validades": " | ".join(detalhes_lotes)
-                })
-
-        if not linhas:
-            return jsonify({"error": "Nenhum lote preenchido."}), 400
-
-        df = pd.DataFrame(linhas)
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, sheet_name="Coleta_Validades", index=False)
-        output.seek(0)
-
-        return send_file(
-            output,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True,
-            download_name="coleta_validades_analise.xlsx"
-        )
-    except Exception as e:
-        logger.error(f"Erro ao exportar Excel de validades: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"Erro ao buscar validades: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": "Erro ao carregar dados de validades.",
+            "details": str(e)
+        }), 500
