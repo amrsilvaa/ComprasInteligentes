@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, jsonify, request
 import logging
 # Importe o seu serviço Sankhya aqui (ajuste a importação conforme o nome do seu módulo)
-from sankhya_service import executar_query  
+from backend.sankhya_service import executar_query
 
 validades_bp = Blueprint('validades', __name__)
 
