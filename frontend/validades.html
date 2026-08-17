@@ -154,7 +154,7 @@
                     <th style="width: 120px;">Complemento</th>
                     <th>Descrição</th>
                     <th style="width: 140px;">Separador</th>
-                    <th style="width: 110px;">Estoque Atual</th>
+                    <th style="width: 130px;">Qtd Sistema<br><span style="font-size:11px; font-weight:normal;">(Est/Res/Disp)</span></th>
                     <th style="width: 320px;">Lotes / Coletas (Qtd e Data Validade)</th>
                 </tr>
             </thead>
@@ -228,7 +228,18 @@
 
             produtos.forEach((item, index) => {
                 const tr = document.createElement('tr');
-                const estoqueClasse = item.estoque > 0 ? 'badge-estoque badge-destaque' : 'badge-estoque';
+                
+                // Trata os números do sistema
+                const estoque = Number(item.estoque || 0);
+                const reservado = Number(item.reservado || 0); // Tenta buscar a palavra "reservado" da API
+                const disponivel = estoque - reservado;
+
+                // Salva escondido na linha (para puxar no momento da exportação pro Excel)
+                tr.setAttribute('data-estoque', estoque);
+                tr.setAttribute('data-reservado', reservado);
+                tr.setAttribute('data-disponivel', disponivel);
+
+                const estoqueClasse = disponivel > 0 ? 'badge-estoque badge-destaque' : 'badge-estoque';
 
                 tr.innerHTML = `
                     <td>${item.codigo || '-'}</td>
@@ -236,7 +247,11 @@
                     <td>${item.complemento || '-'}</td>
                     <td><strong>${item.descricao || '-'}</strong></td>
                     <td>${item.separador || '-'}</td>
-                    <td><span class="${estoqueClasse}">${Number(item.estoque || 0).toLocaleString('pt-BR')}</span></td>
+                    <td>
+                        <div style="font-size: 12px; color: #64748b; margin-bottom:2px;">Estoque: ${estoque}</div>
+                        <div style="font-size: 12px; color: #ef4444; margin-bottom:4px;">Reservado: ${reservado}</div>
+                        <div class="${estoqueClasse}">Disp: ${disponivel}</div>
+                    </td>
                     <td>
                         <div class="lotes-container" id="lotes-prod-${index}">
                             <div class="lote-row">
@@ -288,7 +303,7 @@
             const linhas = document.querySelectorAll('#tabelaCorpo tr');
             
             let dadosParaExportar = [];
-            let maxLotes = 0; // Vai descobrir quantas colunas de Qtd e Data precisa criar
+            let maxLotes = 0;
 
             linhas.forEach(linha => {
                 if (linha.querySelector('td[colspan]')) return;
@@ -301,9 +316,15 @@
                 const complemento = colunas[2].innerText.trim();
                 const descricao = colunas[3].innerText.trim().replace(/"/g, '""');
                 const separador = colunas[4].innerText.trim();
-                const estoque = colunas[5].innerText.trim(); // Será chamado de Disponível
+                
+                // Pega os dados de estoque que salvamos escondidos na linha
+                const estoque = Number(linha.getAttribute('data-estoque') || 0);
+                const reservado = Number(linha.getAttribute('data-reservado') || 0);
+                const disponivel = Number(linha.getAttribute('data-disponivel') || 0);
                 
                 let lotesDestaLinha = [];
+                let totalColetado = 0;
+
                 const inputsQtd = linha.querySelectorAll('.input-qtd');
                 const inputsVal = linha.querySelectorAll('.input-val');
                 
@@ -318,19 +339,29 @@
                         }
                     }
                     
-                    // Só adiciona se tiver digitado quantidade ou data
                     if (qtd || data) {
                         lotesDestaLinha.push({ qtd: qtd || '', data: data || '' });
+                        
+                        // Soma a quantidade desse lote no Total Coletado
+                        if (qtd) {
+                            totalColetado += Number(qtd);
+                        }
                     }
                 }
                 
-                // Se a linha teve alguma validade preenchida, salva para exportar
+                // Só exporta se tiver preenchido pelo menos um lote
                 if (lotesDestaLinha.length > 0) {
                     if (lotesDestaLinha.length > maxLotes) {
                         maxLotes = lotesDestaLinha.length;
                     }
+                    
+                    // A MATEMÁTICA DA DIVERGÊNCIA ACONTECE AQUI:
+                    const divergencia = totalColetado - disponivel;
+
                     dadosParaExportar.push({
-                        codigo, ean, complemento, descricao, separador, estoque, lotes: lotesDestaLinha
+                        codigo, ean, complemento, descricao, separador, 
+                        estoque, reservado, disponivel, totalColetado, divergencia, 
+                        lotes: lotesDestaLinha
                     });
                 }
             });
@@ -340,8 +371,9 @@
                 return;
             }
 
-            // Monta o cabeçalho dinamicamente
-            let cabecalho = ['Código', 'EAN', 'Complemento', 'Descrição', 'Separador', 'Disponível'];
+            // Monta o cabeçalho dinamicamente com as novas colunas
+            let cabecalho = ['Código', 'EAN', 'Complemento', 'Descrição', 'Separador', 'Estoque_Sistema', 'Reservado', 'Disponível_Sistema', 'Total_Coletado', 'Divergência'];
+            
             for (let i = 1; i <= maxLotes; i++) {
                 cabecalho.push(`Qtd_${i}`);
                 cabecalho.push(`Data_${i}`);
@@ -357,7 +389,11 @@
                     `"${item.complemento}"`, 
                     `"${item.descricao}"`, 
                     `"${item.separador}"`, 
-                    `"${item.estoque}"`
+                    `"${item.estoque}"`,
+                    `"${item.reservado}"`,
+                    `"${item.disponivel}"`,
+                    `"${item.totalColetado}"`,
+                    `"${item.divergencia}"`
                 ];
                 
                 for (let i = 0; i < maxLotes; i++) {
@@ -365,7 +401,6 @@
                         linhaCSV.push(`"${item.lotes[i].qtd}"`);
                         linhaCSV.push(`"${item.lotes[i].data}"`);
                     } else {
-                        // Se esse produto teve menos lotes que o máximo, preenche vazio
                         linhaCSV.push('""'); 
                         linhaCSV.push('""'); 
                     }
@@ -376,7 +411,7 @@
             const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = 'coleta_validades.csv';
+            link.download = 'coleta_validades_divergencia.csv';
             link.click();
         }
 
