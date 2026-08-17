@@ -26,13 +26,17 @@ def exportar_validades_excel():
         linhas = []
         for p in dados:
             cod = p.get("cod", "")
-            desc = p.get("desc", "")
             ean = p.get("ean", "")
+            complemento = p.get("complemento", "")
+            desc = p.get("desc", "")
+            separador = p.get("separador", "")
+            estoque_atual = p.get("estoque", 0)
+
             for lote in p.get("lotes", []):
-                qtd = lote.get("qtd")
+                qtd_coletada = lote.get("qtd")
                 validade_raw = lote.get("validade", "")
-                
-                # Formata a data de YYYY-MM-DD para DD/MM/AAAA
+
+                # Formata a data para DD/MM/AAAA
                 validade_fmt = validade_raw
                 if validade_raw:
                     try:
@@ -40,14 +44,26 @@ def exportar_validades_excel():
                     except ValueError:
                         validade_fmt = validade_raw
 
-                if qtd or validade_fmt:
+                if qtd_coletada or validade_fmt:
+                    try:
+                        qtd_num = float(qtd_coletada) if qtd_coletada else 0
+                        est_num = float(estoque_atual) if estoque_atual else 0
+                        diferenca = qtd_num - est_num
+                    except (ValueError, TypeError):
+                        diferenca = "-"
+
                     linhas.append({
                         "Código": cod,
                         "EAN": ean,
+                        "Complemento": complemento,
                         "Descrição do Produto": desc,
-                        "Quantidade Coletada": qtd,
+                        "Separador": separador,
+                        "Estoque Atual (Sankhya)": estoque_atual,
+                        "Quantidade Coletada": qtd_coletada,
+                        "Diferença (Coletado - Estoque)": diferenca,
                         "Data de Validade": validade_fmt
                     })
+
         if not linhas:
             return jsonify({"error": "Nenhum lote preenchido."}), 400
 
@@ -61,7 +77,7 @@ def exportar_validades_excel():
             output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name="coleta_validades.xlsx"
+            download_name="coleta_validades_analise.xlsx"
         )
     except Exception as e:
         logger.error(f"Erro ao exportar Excel de validades: {e}")

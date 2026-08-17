@@ -3,49 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Coleta de Validades</title>
+    <title>Coleta de Validades e Análise de Estoque</title>
     <link rel="stylesheet" href="/style.css">
     <style>
         body { font-family: sans-serif; background-color: #f8fafc; margin: 0; padding: 0; }
-        .container { max-width: 1200px; margin: 20px auto; padding: 20px; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .container { max-width: 1350px; margin: 20px auto; padding: 20px; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .actions-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-        .search-input { flex: 1; padding: 10px; font-size: 16px; min-width: 250px; border: 1px solid #cbd5e0; border-radius: 4px; }
+        .search-input, .select-filter { padding: 10px; font-size: 15px; border: 1px solid #cbd5e0; border-radius: 4px; }
+        .search-input { flex: 2; min-width: 250px; }
+        .select-filter { flex: 1; min-width: 180px; }
         .btn { padding: 10px 18px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .btn-success { background-color: #2f855a; color: white; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; vertical-align: top; }
+        th, td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; vertical-align: middle; font-size: 14px; }
         th { background-color: #f7fafc; font-weight: 600; }
-        .lote-row { display: flex; gap: 8px; margin-bottom: 6px; align-items: center; }
-        .input-qtd { width: 90px; padding: 6px; border: 1px solid #cbd5e0; border-radius: 4px; }
-        .input-val { width: 160px; padding: 6px; border: 1px solid #cbd5e0; border-radius: 4px; }
-        .btn-add { background-color: #3182ce; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-remove { background-color: #e53e3e; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .lote-row { display: flex; gap: 6px; margin-bottom: 4px; align-items: center; }
+        .input-qtd { width: 80px; padding: 6px; border: 1px solid #cbd5e0; border-radius: 4px; }
+        .input-val { width: 150px; padding: 6px; border: 1px solid #cbd5e0; border-radius: 4px; }
+        .btn-add { background-color: #3182ce; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-remove { background-color: #e53e3e; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .badge-estoque { background-color: #edf2f7; padding: 4px 8px; border-radius: 4px; font-weight: bold; color: #2d3748; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header-bar">
-            <h1>📅 Coleta de Validades</h1>
+            <h1>📅 Coleta de Validades & Análise de Estoque</h1>
         </div>
 
         <div class="actions-bar">
-            <input type="text" id="searchInput" class="search-input" placeholder="Buscar por Código, EAN ou Descrição..." onkeyup="filtrarTabela()">
+            <input type="text" id="searchInput" class="search-input" placeholder="Buscar por Código, EAN, Complemento ou Descrição..." onkeyup="filtrarTabela()">
+            
+            <select id="selectSeparador" class="select-filter" onchange="filtrarTabela()">
+                <option value="">-- Todos os Separadores --</option>
+            </select>
+
             <button class="btn btn-success" onclick="exportarExcel()">📊 Exportar para Excel</button>
         </div>
 
         <table id="tabelaValidades">
             <thead>
                 <tr>
-                    <th style="width: 90px;">Código</th>
-                    <th style="width: 130px;">EAN</th>
+                    <th style="width: 80px;">Código</th>
+                    <th style="width: 110px;">EAN</th>
+                    <th style="width: 110px;">Complemento</th>
                     <th>Descrição</th>
-                    <th style="width: 380px;">Lotes / Coletas (Qtd e Data Validade)</th>
+                    <th style="width: 140px;">Separador</th>
+                    <th style="width: 100px;">Estoque Atual</th>
+                    <th style="width: 350px;">Lotes / Coletas (Qtd e Data Validade)</th>
                 </tr>
             </thead>
             <tbody id="corpoTabela">
                 <tr>
-                    <td colspan="4" style="text-align: center; color: #718096;">Carregando produtos...</td>
+                    <td colspan="7" style="text-align: center; color: #718096;">Carregando produtos...</td>
                 </tr>
             </tbody>
         </table>
@@ -70,41 +81,63 @@
                 
                 if (json.sucesso && json.produtos) {
                     produtosGerais = Array.isArray(json.produtos) ? json.produtos : (json.produtos.dados || []);
+                    popularFiltroSeparador(produtosGerais);
                     renderizarTabela(produtosGerais);
                 } else {
                     document.getElementById('corpoTabela').innerHTML = 
-                        '<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar dados.</td></tr>';
+                        '<tr><td colspan="7" style="text-align: center; color: red;">Erro ao carregar dados.</td></tr>';
                 }
             } catch (err) {
                 console.error(err);
                 document.getElementById('corpoTabela').innerHTML = 
-                    '<tr><td colspan="4" style="text-align: center; color: red;">Falha de conexão com o servidor.</td></tr>';
+                    '<tr><td colspan="7" style="text-align: center; color: red;">Falha de conexão com o servidor.</td></tr>';
             }
+        }
+
+        function popularFiltroSeparador(lista) {
+            const select = document.getElementById('selectSeparador');
+            const separadores = new Set();
+
+            lista.forEach(p => {
+                const sep = obterValor(p, ['SEPARADOR', 'separador', 'CODUSU', 'codusu', 'NOMEUSU', 'nomeusu']);
+                if (sep !== '-') separadores.add(sep);
+            });
+
+            select.innerHTML = '<option value="">-- Todos os Separadores --</option>';
+            Array.from(separadores).sort().forEach(s => {
+                select.innerHTML += `<option value="${s}">${s}</option>`;
+            });
         }
 
         function renderizarTabela(lista) {
             const tbody = document.getElementById('corpoTabela');
             if (!lista || !lista.length) {
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum produto encontrado.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Nenhum produto encontrado.</td></tr>';
                 return;
             }
 
             tbody.innerHTML = lista.map((p, idx) => {
                 const cod = obterValor(p, ['CODPROD', 'codprod', 'COD', 'cod', 'codigo', 'CODIGO']);
                 const ean = obterValor(p, ['EAN', 'ean', 'CODBARRA', 'codbarra', 'GTIN', 'gtin']);
-                const desc = obterValor(p, ['DESCRPROD', 'descrprod', 'DESCRICAO', 'descricao', 'DESC', 'desc', 'NOME', 'nome']);
+                const complemento = obterValor(p, ['COMPLEMENTO', 'complemento', 'COMPL', 'compl']);
+                const desc = obterValor(p, ['DESCRPROD', 'descrprod', 'DESCRICAO', 'descricao', 'DESC', 'desc']);
+                const separador = obterValor(p, ['SEPARADOR', 'separador', 'CODUSU', 'codusu', 'NOMEUSU', 'nomeusu']);
+                const estoque = obterValor(p, ['ESTOQUE', 'estoque', 'ESTOQUEATUAL', 'QTDESTOQUE', 'qtdestoque', 'SALDO']);
 
                 return `
                     <tr>
                         <td>${cod}</td>
                         <td>${ean}</td>
+                        <td>${complemento}</td>
                         <td>${desc}</td>
+                        <td>${separador}</td>
+                        <td><span class="badge-estoque">${estoque}</span></td>
                         <td>
                             <div id="lotes_container_${idx}">
                                 <div class="lote-row">
                                     <input type="number" min="1" placeholder="Qtd" class="input-qtd">
                                     <input type="date" class="input-val">
-                                    <button type="button" class="btn-add" onclick="adicionarLote(${idx})" title="Adicionar mais uma data">+</button>
+                                    <button type="button" class="btn-add" onclick="adicionarLote(${idx})" title="Adicionar mais um lote">+</button>
                                 </div>
                             </div>
                         </td>
@@ -120,7 +153,7 @@
             div.innerHTML = `
                 <input type="number" min="1" placeholder="Qtd" class="input-qtd">
                 <input type="date" class="input-val">
-                <button type="button" class="btn-remove" onclick="removerLote(this)" title="Remover este lote">✕</button>
+                <button type="button" class="btn-remove" onclick="removerLote(this)" title="Remover lote">✕</button>
             `;
             container.appendChild(div);
         }
@@ -131,12 +164,21 @@
 
         function filtrarTabela() {
             const termo = document.getElementById('searchInput').value.toLowerCase();
+            const separadorSel = document.getElementById('selectSeparador').value.toLowerCase();
+
             const filtrados = produtosGerais.filter(p => {
                 const cod = String(obterValor(p, ['CODPROD', 'codprod', 'COD', 'cod', 'codigo'])).toLowerCase();
                 const ean = String(obterValor(p, ['EAN', 'ean', 'CODBARRA', 'codbarra'])).toLowerCase();
+                const complemento = String(obterValor(p, ['COMPLEMENTO', 'complemento', 'COMPL'])).toLowerCase();
                 const desc = String(obterValor(p, ['DESCRPROD', 'descrprod', 'DESCRICAO', 'descricao'])).toLowerCase();
-                return cod.includes(termo) || ean.includes(termo) || desc.includes(termo);
+                const separador = String(obterValor(p, ['SEPARADOR', 'separador', 'CODUSU', 'codusu', 'NOMEUSU'])).toLowerCase();
+
+                const bateTexto = cod.includes(termo) || ean.includes(termo) || complemento.includes(termo) || desc.includes(termo);
+                const bateSeparador = !separadorSel || separador === separadorSel;
+
+                return bateTexto && bateSeparador;
             });
+
             renderizarTabela(filtrados);
         }
 
@@ -146,11 +188,14 @@
 
             trs.forEach((tr) => {
                 const tds = tr.querySelectorAll('td');
-                if (tds.length < 4) return;
+                if (tds.length < 7) return;
 
                 const cod = tds[0].innerText.trim();
                 const ean = tds[1].innerText.trim();
-                const desc = tds[2].innerText.trim();
+                const complemento = tds[2].innerText.trim();
+                const desc = tds[3].innerText.trim();
+                const separador = tds[4].innerText.trim();
+                const estoque = tds[5].innerText.trim();
 
                 const lotesDivs = tr.querySelectorAll('.lote-row');
                 const lotes = [];
@@ -165,7 +210,7 @@
                 });
 
                 if (lotes.length > 0) {
-                    dadosEnviar.push({ cod, ean, desc, lotes });
+                    dadosEnviar.push({ cod, ean, complemento, desc, separador, estoque, lotes });
                 }
             });
 
@@ -187,7 +232,7 @@
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'coleta_validades.xlsx';
+                a.download = 'coleta_validades_analise.xlsx';
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
