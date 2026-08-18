@@ -51,34 +51,56 @@ class SankhyaAPIService:
         complemento = cls._first_value(item, "COMPLEMENTO", "COMPLDESC", "complemento", "compldesc")
         separador = cls._first_value(item, "SEPARADOR", "CODAREASEP", "separador", "codareasep")
 
-        disponivel = cls._first_value(item, "DISPONIVEL", "ESTOQUE", "estoque")
+        # Correção exata dos estoques coletados da query SQL do Sankhya
+        estoque_bruto = cls._first_value(item, "ESTOQUE", "estoque")
         reservado = cls._first_value(item, "RESERVADO", "reservado")
+        disponivel = cls._first_value(item, "DISPONIVEL", "disponivel")
 
         venda_15d = cls._first_value(item, "VENDAS_15D", "vendas_15d", "venda_15d")
         venda_mes_anterior = cls._first_value(item, "VENDAS_MES_ANTERIOR", "vendas_mes_anterior", "venda_mes_anterior")
         custo = cls._first_value(item, "PRECO_CUSTO", "CUSTO_UNITARIO", "custo", "CUSREP")
         preco_venda = cls._first_value(item, "PRECO_VENDA", "preco_venda", "VLRVENDA")
 
-        disponivel_valor = cls._coerce_number(disponivel)
+        estoque_valor = cls._coerce_number(estoque_bruto)
         reservado_valor = cls._coerce_number(reservado)
+        
+        # Garante o valor real do Disponível
+        if disponivel is not None and str(disponivel).strip() != "":
+            disponivel_valor = cls._coerce_number(disponivel)
+        else:
+            disponivel_valor = estoque_valor - reservado_valor
+
         venda_15d_valor = cls._coerce_number(venda_15d)
         venda_mes_anterior_valor = cls._coerce_number(venda_mes_anterior)
         custo_valor = cls._coerce_number(custo)
         preco_venda_valor = cls._coerce_number(preco_venda)
+
+        # Trata e limpa o código EAN para nunca virar número científico
+        ean_str = ""
+        if ean is not None and str(ean).strip() != "":
+            ean_raw = str(ean).strip()
+            if "E+" in ean_raw.upper() or "E-" in ean_raw.upper():
+                try:
+                    ean_str = f"{int(float(ean_raw))}"
+                except ValueError:
+                    ean_str = ean_raw
+            else:
+                ean_str = ean_raw.split(".")[0] if "." in ean_raw else ean_raw
 
         # Regra de Sugestão de Compra
         sugestao = max(0.0, venda_15d_valor - disponivel_valor)
         status = "REPOR" if sugestao > 0 else "OK"
 
         return {
-            # Mapeamento padrão para o Módulo de Validades
+            # Mapeamento padrão para o Módulo de Validades e Exportação
             "cod": codigo,
-            "ean": ean if ean is not None else "",
+            "ean": ean_str,
             "complemento": complemento if complemento is not None else "",
             "desc": descricao,
             "separador": separador if separador is not None else "",
-            "estoque": disponivel_valor,
-            "reservado": reservado_valor,
+            "estoque": estoque_valor,          # Estoque Total Bruto (ex: 2102)
+            "reservado": reservado_valor,      # Reservado (ex: 356)
+            "disponivel": disponivel_valor,    # Disponível Real (ex: 1746)
 
             # Mapeamento para Módulos de Compras / Vendas / Estoque Geral
             "codigo": codigo,
@@ -237,7 +259,6 @@ class SankhyaAPIService:
             response.raise_for_status()
             data = response.json()
 
-            # Caso o token/sessão mgeSession tenha expirado, tenta relogar 1 vez
             if data.get("status") != "1":
                 logger.warning(f"Sessão ou resposta inválida da API Sankhya ({data.get('status')}): {data.get('statusMessage')}. Tentando reautenticar...")
                 if self.login():
@@ -278,7 +299,7 @@ class SankhyaAPIService:
 
 def buscar_dados_estoque_vendas() -> List[Dict[str, Any]]:
     """
-    Função de alto nível chamada pelas rotas da API (ex: /api/validades/produtos).
+    Função de alto nível chamada pelas rotas da API.
     """
     service = SankhyaAPIService()
     return service.carregar_dados_estoque_vendas()
