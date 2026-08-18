@@ -230,8 +230,8 @@
                 const tr = document.createElement('tr');
                 
                 // Trata os números do sistema
-                const estoque = Number(item.estoque || 0);
-                const reservado = Number(item.reservado || 0); // Tenta buscar a palavra "reservado" da API
+                            const reservado = Number(item.reservado || item.RESERVADO || 0);
+const estoque = Number(item.estoque || item.ESTOQUE || 0);
                 const disponivel = estoque - reservado;
 
                 // Salva escondido na linha (para puxar no momento da exportação pro Excel)

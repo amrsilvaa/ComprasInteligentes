@@ -52,12 +52,15 @@ class SankhyaAPIService:
         separador = cls._first_value(item, "SEPARADOR", "CODAREASEP", "separador", "codareasep")
 
         disponivel = cls._first_value(item, "DISPONIVEL", "ESTOQUE", "estoque")
+        reservado = cls._first_value(item, "RESERVADO", "reservado")
+
         venda_15d = cls._first_value(item, "VENDAS_15D", "vendas_15d", "venda_15d")
         venda_mes_anterior = cls._first_value(item, "VENDAS_MES_ANTERIOR", "vendas_mes_anterior", "venda_mes_anterior")
         custo = cls._first_value(item, "PRECO_CUSTO", "CUSTO_UNITARIO", "custo", "CUSREP")
         preco_venda = cls._first_value(item, "PRECO_VENDA", "preco_venda", "VLRVENDA")
 
         disponivel_valor = cls._coerce_number(disponivel)
+        reservado_valor = cls._coerce_number(reservado)
         venda_15d_valor = cls._coerce_number(venda_15d)
         venda_mes_anterior_valor = cls._coerce_number(venda_mes_anterior)
         custo_valor = cls._coerce_number(custo)
@@ -75,6 +78,7 @@ class SankhyaAPIService:
             "desc": descricao,
             "separador": separador if separador is not None else "",
             "estoque": disponivel_valor,
+            "reservado": reservado_valor,
 
             # Mapeamento para Módulos de Compras / Vendas / Estoque Geral
             "codigo": codigo,
@@ -171,7 +175,7 @@ class SankhyaAPIService:
             BAR.CODBARRA AS EAN,
             PRO.COMPLDESC AS COMPLEMENTO,
             PRO.DESCRPROD, 
-           ISNULL(VEN.APELIDO, PRO.AD_CODVEND) AS SEPARADOR,
+            ISNULL(VEN.APELIDO, PRO.AD_CODVEND) AS SEPARADOR,
             PRO.CODVOL AS UNIDADEMEDIDA,
             ISNULL(EST.ESTOQUE, 0) AS ESTOQUE,
             ISNULL(EST.RESERVADO, 0) AS RESERVADO,
@@ -183,7 +187,7 @@ class SankhyaAPIService:
         FROM TGFPRO PRO
 
         LEFT JOIN BAR ON BAR.CODPROD = PRO.CODPROD
-LEFT JOIN TGFVEN VEN ON VEN.CODVEND = PRO.AD_CODVEND
+        LEFT JOIN TGFVEN VEN ON VEN.CODVEND = PRO.AD_CODVEND
         LEFT JOIN (
             SELECT 
                 CODPROD,

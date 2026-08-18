@@ -46,7 +46,8 @@ def get_validades():
                 "complemento": complemento_val,
                 "descricao": str(row.get('descricao') or '').strip(),
                 "separador": separador_val,
-                "estoque": float(row.get('estoque') or 0.0)
+                "estoque": float(row.get('estoque') or 0.0),
+                "reservado": float(row.get('reservado') or row.get('RESERVADO') or 0.0)
             })
 
         return jsonify({
