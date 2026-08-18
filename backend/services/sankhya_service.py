@@ -5,7 +5,6 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-# Carrega variáveis de ambiente do .env
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
@@ -51,7 +50,6 @@ class SankhyaAPIService:
         complemento = cls._first_value(item, "COMPLEMENTO", "COMPLDESC", "complemento", "compldesc")
         separador = cls._first_value(item, "SEPARADOR", "CODAREASEP", "separador", "codareasep")
 
-        # Correção exata dos estoques coletados da query SQL do Sankhya
         estoque_bruto = cls._first_value(item, "ESTOQUE", "estoque")
         reservado = cls._first_value(item, "RESERVADO", "reservado")
         disponivel = cls._first_value(item, "DISPONIVEL", "disponivel")
@@ -64,7 +62,6 @@ class SankhyaAPIService:
         estoque_valor = cls._coerce_number(estoque_bruto)
         reservado_valor = cls._coerce_number(reservado)
         
-        # Garante o valor real do Disponível
         if disponivel is not None and str(disponivel).strip() != "":
             disponivel_valor = cls._coerce_number(disponivel)
         else:
@@ -75,7 +72,7 @@ class SankhyaAPIService:
         custo_valor = cls._coerce_number(custo)
         preco_venda_valor = cls._coerce_number(preco_venda)
 
-        # Trata e limpa o código EAN para nunca virar número científico
+        # Formatação rígida do EAN para string numérica limpa
         ean_str = ""
         if ean is not None and str(ean).strip() != "":
             ean_raw = str(ean).strip()
@@ -87,22 +84,19 @@ class SankhyaAPIService:
             else:
                 ean_str = ean_raw.split(".")[0] if "." in ean_raw else ean_raw
 
-        # Regra de Sugestão de Compra
         sugestao = max(0.0, venda_15d_valor - disponivel_valor)
         status = "REPOR" if sugestao > 0 else "OK"
 
         return {
-            # Mapeamento padrão para o Módulo de Validades e Exportação
             "cod": codigo,
             "ean": ean_str,
             "complemento": complemento if complemento is not None else "",
             "desc": descricao,
             "separador": separador if separador is not None else "",
-            "estoque": estoque_valor,          # Estoque Total Bruto (ex: 2102)
-            "reservado": reservado_valor,      # Reservado (ex: 356)
-            "disponivel": disponivel_valor,    # Disponível Real (ex: 1746)
+            "estoque": estoque_valor,
+            "reservado": reservado_valor,
+            "disponivel": disponivel_valor,
 
-            # Mapeamento para Módulos de Compras / Vendas / Estoque Geral
             "codigo": codigo,
             "descricao": descricao,
             "unidade": unidade if unidade else "UN",
@@ -298,8 +292,5 @@ class SankhyaAPIService:
 
 
 def buscar_dados_estoque_vendas() -> List[Dict[str, Any]]:
-    """
-    Função de alto nível chamada pelas rotas da API.
-    """
     service = SankhyaAPIService()
     return service.carregar_dados_estoque_vendas()
