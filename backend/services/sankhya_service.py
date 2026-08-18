@@ -88,17 +88,17 @@ class SankhyaAPIService:
         status = "REPOR" if sugestao > 0 else "OK"
 
         return {
-            "cod": codigo,
+            "codigo": codigo,
             "ean": ean_str,
             "complemento": complemento if complemento is not None else "",
-            "desc": descricao,
+            "descricao": descricao,
             "separador": separador if separador is not None else "",
             "estoque": estoque_valor,
             "reservado": reservado_valor,
             "disponivel": disponivel_valor,
 
-            "codigo": codigo,
-            "descricao": descricao,
+            "cod": codigo,
+            "desc": descricao,
             "unidade": unidade if unidade else "UN",
             "estoque_disponivel": disponivel_valor,
             "estoque_minimo": 0.0,
@@ -114,6 +114,12 @@ class SankhyaAPIService:
             "preco_venda": preco_venda_valor,
             "sugestao_compra": sugestao,
             "status": status,
+            
+            "CODIGO": codigo,
+            "DESCRICAO": descricao,
+            "SEPARADOR": separador if separador is not None else "",
+            "ESTOQUE": estoque_valor,
+            "RESERVADO": reservado_valor,
         }
 
     def __init__(self):
