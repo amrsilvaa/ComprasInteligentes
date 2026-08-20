@@ -15,22 +15,14 @@ let produtosParaComprar = [];
 // ============================================================
 
 function numero(valor) {
-    if (valor === null || valor === undefined || valor === "") {
-        return 0;
-    }
-
-    if (typeof valor === "number") {
-        return Number.isFinite(valor) ? valor : 0;
-    }
-
+    if (valor === null || valor === undefined || valor === "") return 0;
+    if (typeof valor === "number") return Number.isFinite(valor) ? valor : 0;
     let texto = String(valor).trim().replace(/\s/g, "");
-
     if (texto.includes(".") && texto.includes(",")) {
         texto = texto.replace(/\./g, "").replace(",", ".");
     } else if (texto.includes(",")) {
         texto = texto.replace(",", ".");
     }
-
     const resultado = Number(texto);
     return Number.isFinite(resultado) ? resultado : 0;
 }
@@ -62,7 +54,6 @@ function escaparHTML(valor) {
 function sistemaOnline() {
     const bolinha = document.getElementById("status");
     const texto = document.getElementById("statusTexto");
-
     if (bolinha) bolinha.style.background = "#16a34a";
     if (texto) texto.textContent = "Sistema online";
 }
@@ -70,7 +61,6 @@ function sistemaOnline() {
 function sistemaOffline() {
     const bolinha = document.getElementById("status");
     const texto = document.getElementById("statusTexto");
-
     if (bolinha) bolinha.style.background = "#dc2626";
     if (texto) texto.textContent = "Erro de conexão";
 }
@@ -78,15 +68,9 @@ function sistemaOffline() {
 function badgeStatus(status) {
     const texto = String(status);
     let classe = "status-normal";
-
-    if (texto.toLowerCase().includes("urgente")) {
-        classe = "status-urgente";
-    } else if (texto.toLowerCase().includes("comprar")) {
-        classe = "status-comprar";
-    } else if (texto.toLowerCase().includes("sem venda")) {
-        classe = "status-sem-venda";
-    }
-
+    if (texto.toLowerCase().includes("urgente")) classe = "status-urgente";
+    else if (texto.toLowerCase().includes("comprar")) classe = "status-comprar";
+    else if (texto.toLowerCase().includes("sem venda")) classe = "status-sem-venda";
     return `<span class="badge-status ${classe}">${escaparHTML(texto)}</span>`;
 }
 
@@ -99,48 +83,29 @@ async function carregarDados() {
     if (tabelaEstoque) {
         tabelaEstoque.innerHTML = `<tr><td colspan="11">Carregando dados do Sankhya...</td></tr>`;
     }
-
     try {
         const resposta = await fetch(`${API}/api/estoque`);
         if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`);
-
         const dados = await resposta.json();
-        
-        if (dados.error) {
-            throw new Error(dados.error);
-        }
-
-        // Caso o backend retorne uma lista de produtos
+        if (dados.error) throw new Error(dados.error);
         analiseEstoque = Array.isArray(dados) ? dados : (dados.produtos || []);
-
-        // Atualiza os cartões informativos do painel
         const totalProdutos = document.getElementById("totalProdutos");
-        if (totalProdutos) {
-            totalProdutos.textContent = formatarInteiro(analiseEstoque.length);
-        }
-
-        // Processa produtos mais vendidos
+        if (totalProdutos) totalProdutos.textContent = formatarInteiro(analiseEstoque.length);
         produtosMaisVendidos = [...analiseEstoque].sort((a, b) => numero(b.vendas_mes) - numero(a.vendas_mes));
-        
         if (produtosMaisVendidos.length > 0) {
             const lider = produtosMaisVendidos[0];
             const produtoMaisVendido = document.getElementById("produtoMaisVendido");
             const volumeLider = document.getElementById("volumeLider");
-            
             if (produtoMaisVendido) produtoMaisVendido.textContent = lider.produto ?? "-";
             if (volumeLider) volumeLider.textContent = formatarNumero(lider.vendas_mes);
         }
-
         let totalVolume = analiseEstoque.reduce((acc, item) => acc + numero(item.vendas_mes), 0);
         const volumeVendido = document.getElementById("volumeVendido");
         if (volumeVendido) volumeVendido.textContent = formatarNumero(totalVolume);
-
-        // Renderiza as tabelas
         renderizarEstoque();
         renderizarMaisVendidos();
         carregarOQueComprar();
         sistemaOnline();
-
     } catch (erro) {
         console.error("ERRO /api/estoque:", erro);
         if (tabelaEstoque) {
@@ -151,18 +116,16 @@ async function carregarDados() {
 }
 
 // ============================================================
-// RENDERIZAÇÃO DE TABELAS
+// RENDERIZAÇÃO DE TABELAS (AQUI ESTÁ A ALTERAÇÃO DO FORNECEDOR)
 // ============================================================
 
 function renderizarMaisVendidos() {
     const tabela = document.getElementById("tabelaProdutos");
     if (!tabela) return;
-
     if (!produtosMaisVendidos.length) {
         tabela.innerHTML = `<tr><td colspan="3">Nenhum produto encontrado.</td></tr>`;
         return;
     }
-
     tabela.innerHTML = produtosMaisVendidos.slice(0, 10).map((item, indice) => `
         <tr>
             <td>${indice + 1}</td>
@@ -175,12 +138,11 @@ function renderizarMaisVendidos() {
 function renderizarEstoque(dados = analiseEstoque) {
     const tabela = document.getElementById("tabelaEstoque");
     if (!tabela) return;
-
     if (!dados.length) {
         tabela.innerHTML = `<tr><td colspan="11">Nenhum produto encontrado.</td></tr>`;
         return;
     }
-
+    // ALTERAÇÃO: Adicionada a linha do fornecedor (coluna 11)
     tabela.innerHTML = dados.map(item => `
         <tr>
             <td>${escaparHTML(item.produto ?? "-")}</td>
@@ -193,6 +155,7 @@ function renderizarEstoque(dados = analiseEstoque) {
             <td>${formatarNumero(item.dias_estoque)}</td>
             <td>${formatarNumero(item.estoque_meta)}</td>
             <td>${formatarNumero(item.sugestao_compra)}</td>
+            <td>${escaparHTML(item.fornecedor ?? "-")}</td>
             <td>${badgeStatus(item.status ?? "Sem venda")}</td>
         </tr>
     `).join("");
@@ -201,20 +164,15 @@ function renderizarEstoque(dados = analiseEstoque) {
 function filtrarEstoque() {
     const busca = document.getElementById("buscaProduto");
     const filtro = document.getElementById("filtroStatus");
-
     const textoBusca = busca ? busca.value.toLowerCase().trim() : "";
     const statusFiltro = filtro ? filtro.value : "";
-
     const resultado = analiseEstoque.filter(item => {
         const produto = String(item.produto ?? "").toLowerCase();
         const status = String(item.status ?? "");
-
         const correspondeProduto = !textoBusca || produto.includes(textoBusca);
         const correspondeStatus = !statusFiltro || status === statusFiltro;
-
         return correspondeProduto && correspondeStatus;
     });
-
     renderizarEstoque(resultado);
 }
 
@@ -227,43 +185,31 @@ function carregarOQueComprar() {
         const status = String(item.status ?? "");
         return status === "Comprar urgente" || status === "Comprar";
     });
-
     produtosParaComprar.sort((a, b) => {
         const prioridadeA = a.status === "Comprar urgente" ? 0 : 1;
         const prioridadeB = b.status === "Comprar urgente" ? 0 : 1;
-
-        if (prioridadeA !== prioridadeB) {
-            return prioridadeA - prioridadeB;
-        }
-
+        if (prioridadeA !== prioridadeB) return prioridadeA - prioridadeB;
         return numero(b.sugestao_compra) - numero(a.sugestao_compra);
     });
-
     const urgentes = produtosParaComprar.filter(i => i.status === "Comprar urgente");
     const normais = produtosParaComprar.filter(i => i.status === "Comprar");
     const quantidadeTotal = produtosParaComprar.reduce((acc, i) => acc + numero(i.sugestao_compra), 0);
-
-    // Atualiza contadores
     const totalUrgentes = document.getElementById("totalUrgentes");
     const totalComprar = document.getElementById("totalComprar");
     const quantidadeCompra = document.getElementById("quantidadeCompra");
-
     if (totalUrgentes) totalUrgentes.textContent = formatarInteiro(urgentes.length);
     if (totalComprar) totalComprar.textContent = formatarInteiro(normais.length);
     if (quantidadeCompra) quantidadeCompra.textContent = formatarNumero(quantidadeTotal);
-
     const cardOQueComprar = document.getElementById("cardOQueComprar") || document.getElementById("statusCardComprar");
     if (cardOQueComprar) {
         cardOQueComprar.textContent = `${produtosParaComprar.length} produtos para comprar`;
     }
-
     renderizarOQueComprar();
 }
 
 function renderizarOQueComprar() {
     const tabela = document.getElementById("tabelaCompras") || document.getElementById("tabelaComprar");
     if (!tabela) return;
-
     if (!produtosParaComprar || produtosParaComprar.length === 0) {
         tabela.innerHTML = `
             <tr>
@@ -274,7 +220,6 @@ function renderizarOQueComprar() {
         `;
         return;
     }
-
     tabela.innerHTML = produtosParaComprar.map((item, indice) => {
         const produto = item.produto ?? "-";
         const estoque = numero(item.estoque);
@@ -285,7 +230,6 @@ function renderizarOQueComprar() {
         const meta = numero(item.estoque_meta);
         const sugestao = numero(item.sugestao_compra);
         const status = item.status ?? "-";
-
         return `
             <tr>
                 <td>${indice + 1}</td>
@@ -306,10 +250,8 @@ function renderizarOQueComprar() {
 function abrirOQueComprar() {
     const painel = document.getElementById("painelComprar");
     if (!painel) return;
-
     painel.style.display = "block";
     carregarOQueComprar();
-
     setTimeout(() => {
         painel.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 100);
@@ -325,16 +267,11 @@ function fecharOQueComprar() {
 // ============================================================
 
 function gerarTextoListaCompras() {
-    if (!produtosParaComprar.length) {
-        return "Nenhum produto precisa de compra no momento.";
-    }
-
+    if (!produtosParaComprar.length) return "Nenhum produto precisa de compra no momento.";
     let texto = "LISTA DE COMPRAS\n==============================\n\n";
     texto += `Total de produtos: ${produtosParaComprar.length}\n\n`;
-
     const urgentes = produtosParaComprar.filter(item => item.status === "Comprar urgente");
     const normais = produtosParaComprar.filter(item => item.status === "Comprar");
-
     if (urgentes.length > 0) {
         texto += "🔴 COMPRA URGENTE\n------------------------------\n\n";
         urgentes.forEach((item, indice) => {
@@ -345,7 +282,6 @@ function gerarTextoListaCompras() {
             texto += `   Comprar: ${formatarNumero(item.sugestao_compra)}\n\n`;
         });
     }
-
     if (normais.length > 0) {
         texto += "🟠 COMPRA\n------------------------------\n\n";
         normais.forEach((item, indice) => {
@@ -356,7 +292,6 @@ function gerarTextoListaCompras() {
             texto += `   Comprar: ${formatarNumero(item.sugestao_compra)}\n\n`;
         });
     }
-
     texto += "==============================\nCompras Inteligentes\n";
     return texto;
 }
@@ -387,21 +322,17 @@ function imprimirListaCompras() {
         alert("Não existem produtos para comprar.");
         return;
     }
-
     const texto = gerarTextoListaCompras();
     const janela = window.open("", "_blank");
-
     if (!janela) {
         alert("O navegador bloqueou a janela de impressão.");
         return;
     }
-
     const html = texto
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/\n/g, "<br>");
-
     janela.document.write(`
         <!DOCTYPE html>
         <html lang="pt-BR">
@@ -419,10 +350,8 @@ function imprimirListaCompras() {
         </body>
         </html>
     `);
-
     janela.document.close();
     janela.focus();
-
     setTimeout(() => {
         if (!janela.closed) janela.print();
     }, 500);
@@ -433,17 +362,11 @@ function imprimirListaCompras() {
 // ============================================================
 
 async function dispararAlertaWhatsApp() {
-    if (!confirm("Deseja enviar o resumo dos itens para reposição no WhatsApp (33 99931-7139)?")) {
-        return;
-    }
-
+    if (!confirm("Deseja enviar o resumo dos itens para reposição no WhatsApp (33 99931-7139)?")) return;
     try {
         const res = await fetch(`${API}/api/whatsapp/disparar-alerta`, { method: "POST" });
-        
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        
         const data = await res.json();
-        
         if (data.sucesso) {
             alert("✅ Alerta de compras enviado com sucesso para o WhatsApp!");
         } else {
@@ -469,68 +392,47 @@ document.addEventListener("DOMContentLoaded", () => {
 // ============================================================
 
 function exportarValidadesParaExcel() {
-    // Busca a tabela da tela (ajuste o ID se a sua tabela tiver um ID específico)
     const tabela = document.querySelector("table"); 
     if (!tabela) {
         alert("Tabela não encontrada na tela.");
         return;
     }
-
     let csv = [];
     const linhas = tabela.querySelectorAll("tr");
-
     for (let i = 0; i < linhas.length; i++) {
         let linhaCSV = [];
         const celulas = linhas[i].querySelectorAll("th, td");
-
-        // Ignora a última coluna (que são os botões de + e -) para deixar o Excel limpo
         const limiteColunas = i === 0 ? celulas.length : celulas.length - 1; 
-
         for (let j = 0; j < limiteColunas; j++) {
             let celula = celulas[j];
-            
-            // Verifica se a célula tem inputs (caixas de quantidade e data)
             const inputs = celula.querySelectorAll("input");
-            
             if (inputs.length > 0) {
                 let valoresColetados = [];
-                // Os inputs vêm em pares: [Quantidade, Data]
                 for (let k = 0; k < inputs.length; k += 2) {
                     const qtd = inputs[k] ? inputs[k].value : "";
                     const data = inputs[k+1] ? inputs[k+1].value : "";
-                    
-                    // Só adiciona se o usuário tiver preenchido pelo menos um dos dois
                     if (qtd || data) {
                         valoresColetados.push(`${qtd} UN -> ${data}`);
                     }
                 }
-                
-                // Junta os lotes com um "|" para ficar na mesma célula do Excel
                 if (valoresColetados.length > 0) {
                     linhaCSV.push(`"${valoresColetados.join(" | ")}"`);
                 } else {
-                    linhaCSV.push('""'); // Célula vazia se não preencheu nada
+                    linhaCSV.push('""');
                 }
             } else {
-                // Se for uma célula normal (Nome do Produto, etc)
                 let texto = celula.innerText.replace(/"/g, '""').trim();
                 linhaCSV.push(`"${texto}"`);
             }
         }
-        // Junta as colunas separando por ponto e vírgula
         csv.push(linhaCSV.join(";"));
     }
-
-    // Cria o arquivo Excel/CSV e força o download
-    let csvContent = "\uFEFF" + csv.join("\n"); // \uFEFF força o padrão do Excel
+    let csvContent = "\uFEFF" + csv.join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    
-    // Nome do arquivo
     link.setAttribute("href", url);
     link.setAttribute("download", "Coleta_de_Validades.csv");
-    
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
