@@ -463,6 +463,7 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("Compras Inteligentes iniciado.");
     carregarDados();
 });
+
 // ============================================================
 // EXPORTAÇÃO DE VALIDADES COM AS DATAS PREENCHIDAS
 // ============================================================

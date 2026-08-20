@@ -68,7 +68,6 @@
               <th class="p-3 cursor-pointer hover:bg-gray-700 text-right" onclick="ordenarPor('vendas_mes_ant')">VENDAS (MÊS ANT.) ⇅</th>
               <th class="p-3 cursor-pointer hover:bg-gray-700 text-right" onclick="ordenarPor('custo_un')">CUSTO UN. (R$) ⇅</th>
               <th class="p-3 cursor-pointer hover:bg-gray-700 text-right text-emerald-300" onclick="ordenarPor('preco_venda')">PREÇO VENDA (R$) ⇅</th>
-              <!-- ALTERAÇÃO 2: Coluna SUGESTÃO movida para cá (logo após o Preço). A coluna FORNECEDOR foi removida. -->
               <th class="p-3 cursor-pointer hover:bg-gray-700 text-right" onclick="ordenarPor('sugestao_compra')">SUGESTÃO ⇅</th>
               <th class="p-3 text-center">STATUS</th>
             </tr>
@@ -189,7 +188,7 @@
         const precisaComprar = sugestao > 0;
         return `<tr class="hover:bg-blue-50 transition-colors ${precisaComprar ? 'bg-red-50' : ''}">
           <td class="p-3 font-mono text-center text-gray-600">${codigo}</td>
-          <td class="p-3 font-medium text-gray-900">${descricao}</td>
+          <td class="p-3 font-medium text-gray-900" title="${fornecedor}">${descricao}</td>
           <td class="p-3 text-center text-gray-500">${unidade}</td>
           <td class="p-3 text-right font-semibold text-gray-800">${formatarNumero(estoque)}</td>
           <td class="p-3 text-right text-gray-500">${formatarNumero(estMin)}</td>
@@ -197,7 +196,6 @@
           <td class="p-3 text-right text-gray-600">${formatarNumero(vendasMesAnt)}</td>
           <td class="p-3 text-right text-gray-600">${formatarMoeda(custoUn)}</td>
           <td class="p-3 text-right font-semibold text-emerald-600">${formatarMoeda(precoVenda)}</td>
-          <!-- ALTERAÇÃO 2 (JS): Coluna SUGESTÃO movida para cá e FORNECEDOR removido -->
           <td class="p-3 text-right font-bold ${precisaComprar ? 'text-red-600' : 'text-gray-700'}">${formatarNumero(sugestao)}</td>
           <td class="p-3 text-center"><span class="${precisaComprar ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'} font-bold px-2.5 py-0.5 rounded-full text-[11px]">${precisaComprar ? 'REPOR' : 'OK'}</span></td>
         </tr>`;
