@@ -5,7 +5,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 logger = logging.getLogger(__name__)
@@ -42,13 +42,34 @@ class SankhyaAPIService:
         return None
 
     @classmethod
-    def _normalizar_produto(cls, item: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalizar_produto(cls, item: Dict[str, Any], mapa_fornecedores: dict) -> Dict[str, Any]:
         codigo = cls._first_value(item, "CODPROD", "codigo", "codprod", "cod")
         descricao = cls._first_value(item, "DESCRPROD", "descricao", "descrprod", "desc")
         unidade = cls._first_value(item, "UNIDADEMEDIDA", "unidade", "codvol", "CODVOL")
         ean = cls._first_value(item, "EAN", "CODBARRA", "ean", "codbarra")
         complemento = cls._first_value(item, "COMPLEMENTO", "COMPLDESC", "complemento", "compldesc")
         separador = cls._first_value(item, "SEPARADOR", "CODAREASEP", "separador", "codareasep")
+        
+        # 🔥 CORREÇÃO: Pega o código do fornecedor e busca o nome
+        cod_fornecedor = cls._first_value(item, "CODPARCFORN")
+        
+        fornecedor = ""
+        if cod_fornecedor:
+            cod_str = str(cod_fornecedor).strip()
+            # Busca no mapa de fornecedores carregado
+            if cod_str in mapa_fornecedores:
+                fornecedor = mapa_fornecedores[cod_str]
+            else:
+                # Tenta buscar com pontos (ex: 4.0)
+                cod_sem_ponto = cod_str.replace(".", "")
+                if cod_sem_ponto in mapa_fornecedores:
+                    fornecedor = mapa_fornecedores[cod_sem_ponto]
+                elif cod_str in mapa_fornecedores:
+                    fornecedor = mapa_fornecedores[cod_str]
+                else:
+                    # Log para debug
+                    logger.debug(f"Fornecedor não encontrado: {cod_str}")
+                    fornecedor = f"Forn: {cod_str}"
 
         estoque_bruto = cls._first_value(item, "ESTOQUE", "estoque")
         reservado = cls._first_value(item, "RESERVADO", "reservado")
@@ -72,7 +93,6 @@ class SankhyaAPIService:
         custo_valor = cls._coerce_number(custo)
         preco_venda_valor = cls._coerce_number(preco_venda)
 
-        # Formatação rígida do EAN para string numérica limpa
         ean_str = ""
         if ean is not None and str(ean).strip() != "":
             ean_raw = str(ean).strip()
@@ -93,28 +113,24 @@ class SankhyaAPIService:
             "complemento": complemento if complemento is not None else "",
             "descricao": descricao,
             "separador": separador if separador is not None else "",
+            "fornecedor": fornecedor,  # 🔥 Nome do fornecedor
             "estoque": estoque_valor,
             "reservado": reservado_valor,
             "disponivel": disponivel_valor,
-
             "cod": codigo,
             "desc": descricao,
             "unidade": unidade if unidade else "UN",
             "estoque_disponivel": disponivel_valor,
             "estoque_minimo": 0.0,
-
             "venda_15d": venda_15d_valor,
             "vendas_15d": venda_15d_valor,
             "venda_mes_anterior": venda_mes_anterior_valor,
             "vendas_mes_ant": venda_mes_anterior_valor,
-            "vendas_mes_anterior": venda_mes_anterior_valor,
-
             "custo": custo_valor,
             "custo_un": custo_valor,
             "preco_venda": preco_venda_valor,
             "sugestao_compra": sugestao,
             "status": status,
-            
             "CODIGO": codigo,
             "DESCRICAO": descricao,
             "SEPARADOR": separador if separador is not None else "",
@@ -154,6 +170,60 @@ class SankhyaAPIService:
         except Exception as e:
             logger.error(f"Erro ao conectar na API do Sankhya: {str(e)}")
             return False
+
+    def carregar_fornecedores(self) -> dict:
+        """Carrega todos os fornecedores ativos do Sankhya"""
+        if not self.jsessionid and not self.login():
+            logger.error("Não foi possível autenticar para carregar fornecedores.")
+            return {}
+
+        query_url = f"{self.base_url}/service.sbr?serviceName=DbExplorerSP.executeQuery&outputType=json&mgeSession={self.jsessionid}"
+        
+        # 🔥 CORREÇÃO: Busca apenas fornecedores ATIVOS
+        sql_parceiros = "SELECT CODPARC, NOMEPARC, RAZAOSOCIAL FROM TGFPAR WHERE FORNECEDOR = 'S' AND ATIVO = 'S'"
+        
+        try:
+            response = self.session.post(query_url, json={"serviceName": "DbExplorerSP.executeQuery", "requestBody": {"sql": sql_parceiros}}, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("status") != "1":
+                logger.warning("Erro ao carregar lista de fornecedores.")
+                return {}
+
+            response_body = data.get("responseBody", {})
+            fields = [f.get("name") if isinstance(f, dict) else f for f in response_body.get("fieldsMetadata", [])]
+            rows = response_body.get("rows", [])
+
+            mapa = {}
+            for row in rows:
+                item = {}
+                values = row.get("localFields", {}).get("localField", []) if isinstance(row, dict) else row
+                if isinstance(values, dict):
+                    values = [values]
+                for idx, field_name in enumerate(fields):
+                    if field_name and idx < len(values):
+                        val_obj = values[idx]
+                        item[field_name] = val_obj.get("$") if isinstance(val_obj, dict) else val_obj
+                
+                codpar = item.get("CODPARC")
+                nomeparc = item.get("NOMEPARC")
+                razaosocial = item.get("RAZAOSOCIAL")
+                nome = nomeparc or razaosocial
+                
+                if codpar and nome:
+                    cod_str = str(codpar).strip()
+                    # 🔥 Adiciona com e sem ponto para garantir matching
+                    mapa[cod_str] = nome.strip()
+                    if "." in cod_str:
+                        mapa[cod_str.replace(".", "")] = nome.strip()
+            
+            logger.info(f"Carregados {len(mapa)} fornecedores com sucesso.")
+            return mapa
+            
+        except Exception as e:
+            logger.error(f"Erro ao carregar fornecedores: {e}")
+            return {}
 
     def carregar_dados_estoque_vendas(self) -> List[Dict[str, Any]]:
         if not self.jsessionid and not self.login():
@@ -198,6 +268,7 @@ class SankhyaAPIService:
             PRO.COMPLDESC AS COMPLEMENTO,
             PRO.DESCRPROD, 
             ISNULL(VEN.APELIDO, PRO.AD_CODVEND) AS SEPARADOR,
+            PRO.CODPARCFORN,  -- 🔥 Código do fornecedor
             PRO.CODVOL AS UNIDADEMEDIDA,
             ISNULL(EST.ESTOQUE, 0) AS ESTOQUE,
             ISNULL(EST.RESERVADO, 0) AS RESERVADO,
@@ -277,6 +348,11 @@ class SankhyaAPIService:
             rows = response_body.get("rows", [])
 
             produtos = []
+            
+            # 🔥 Carrega fornecedores uma única vez
+            mapa_fornecedores = self.carregar_fornecedores()
+            logger.info(f"Mapa de fornecedores carregado: {len(mapa_fornecedores)} registros")
+
             for row in rows:
                 item = {}
                 values = row.get("localFields", {}).get("localField", []) if isinstance(row, dict) else row
@@ -287,7 +363,11 @@ class SankhyaAPIService:
                         val_obj = values[idx]
                         item[field_name] = val_obj.get("$") if isinstance(val_obj, dict) else val_obj
                 if item:
-                    produtos.append(self._normalizar_produto(item))
+                    produto = self._normalizar_produto(item, mapa_fornecedores)
+                    # 🔥 Log para debug (apenas os primeiros 5 produtos)
+                    if len(produtos) < 5:
+                        logger.info(f"Produto: {produto.get('codigo')} - Fornecedor: {produto.get('fornecedor')}")
+                    produtos.append(produto)
 
             logger.info(f"Retornados {len(produtos)} produtos de revenda do Sankhya com sucesso.")
             return produtos

@@ -1,5 +1,5 @@
 import os
-import uvicorn
+from app import app
 
 if __name__ == "__main__":
     print("===================================")
@@ -8,6 +8,5 @@ if __name__ == "__main__":
     print(f"Backend: {os.path.abspath(os.path.dirname(__file__))}")
     print("Iniciando servidor web na porta 8000...")
     print("===================================")
-    
-    # Inicia o servidor web carregando o app
-    uvicorn.run("backend.app:app", host="0.0.0.0", port=8000, reload=True)
+
+    app.run(host="0.0.0.0", port=8000, debug=True)

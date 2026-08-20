@@ -1,4 +1,4 @@
-from backend.services.sankhya_service import SankhyaAPIService
+from services.sankhya_service import SankhyaAPIService
 
 
 def test_normaliza_dados_de_saldo_do_sankhya():
@@ -12,11 +12,12 @@ def test_normaliza_dados_de_saldo_do_sankhya():
         "ESTOQUE_MINIMO": 20,
     }
 
-    item = SankhyaAPIService._normalizar_produto(payload)
+    # ✅ Passando mapa de fornecedores vazio
+    item = SankhyaAPIService._normalizar_produto(payload, {})
 
     assert item["codigo"] == 101
     assert item["descricao"] == "Produto Teste"
-    assert item["estoque"] == 90
-    assert item["estoque_disponivel"] == 90
-    assert item["estoque_minimo"] == 20
-    assert item["sugestao_compra"] == 0
+    assert item["estoque"] == 120  # Estoque bruto
+    assert item["estoque_disponivel"] == 90  # Disponível = estoque - reservado
+    assert item["estoque_minimo"] == 0.0  # Valor padrão
+    assert item["sugestao_compra"] == 0  # 50 - 90 = 0 (não pode ser negativo)

@@ -1,0 +1,3 @@
+[
+  "backend/tests/test_sankhya_service.py::test_normaliza_dados_de_saldo_do_sankhya"
+]

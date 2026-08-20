@@ -1,0 +1,13 @@
+nohup: ignoring input
+Traceback (most recent call last):
+  File "/workspaces/ComprasInteligentes/backend/app.py", line 14, in <module>
+    from webauthn import (
+  File "/usr/local/python/3.12.1/lib/python3.12/site-packages/webauthn/__init__.py", line 1, in <module>
+    from .registration.generate_registration_options import generate_registration_options
+  File "/usr/local/python/3.12.1/lib/python3.12/site-packages/webauthn/registration/generate_registration_options.py", line 3, in <module>
+    from webauthn.helpers import generate_challenge
+  File "/usr/local/python/3.12.1/lib/python3.12/site-packages/webauthn/helpers/__init__.py", line 4, in <module>
+    from .decode_credential_public_key import decode_credential_public_key
+  File "/usr/local/python/3.12.1/lib/python3.12/site-packages/webauthn/helpers/decode_credential_public_key.py", line 3, in <module>
+    from cbor2 import decoder
+ImportError: cannot import name 'decoder' from 'cbor2' (/usr/local/python/3.12.1/lib/python3.12/site-packages/cbor2/__init__.py)
