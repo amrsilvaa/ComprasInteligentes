@@ -13,6 +13,7 @@
         .card-title { font-size: 1.1rem; font-weight: 700; color: #111827; text-transform: uppercase; }
         .card-sub-info { font-size: 0.85rem; color: #6b7280; display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; align-items: center; }
         .fornecedor-tag { background-color: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 0.75rem; }
+        .separador-tag { background-color: #f3e8ff; color: #6b21a8; padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 0.75rem; }
         .card-stats { display: flex; gap: 16px; font-size: 0.9rem; background: #f9fafb; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; }
         .stat-item { font-weight: 500; color: #374151; }
         .stat-val { font-weight: 700; color: #2563eb; }
@@ -38,12 +39,19 @@
         </button>
     </div>
 
-    <!-- FILTROS -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <input type="text" id="filtroTexto" onkeyup="filtrar()" placeholder="Buscar por código, descrição ou fornecedor..." class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+    <!-- FILTROS (3 COLUNAS: TEXTO, SEPARADOR E FORNECEDOR) -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <!-- BUSCA GERAL -->
+        <input type="text" id="filtroTexto" onkeyup="filtrar()" placeholder="Buscar por código, descrição..." class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
         
+        <!-- FILTRO DE SEPARADOR -->
         <select id="filtroSeparador" onchange="filtrar()" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
             <option value="">Todos os Separadores</option>
+        </select>
+
+        <!-- FILTRO DE FORNECEDOR -->
+        <select id="filtroFornecedor" onchange="filtrar()" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
+            <option value="">Todos os Fornecedores</option>
         </select>
     </div>
 
@@ -62,7 +70,7 @@
                 
                 if (result.status === 'sucesso') {
                     produtosGerais = result.data || [];
-                    preencherSeparadores(produtosGerais);
+                    preencherSelects(produtosGerais);
                     renderizarTabela(produtosGerais);
                 } else {
                     document.getElementById('tabelaCorpo').innerHTML = `<p class="text-center text-red-500 col-span-2">Erro ao carregar dados: ${result.mensagem}</p>`;
@@ -72,15 +80,27 @@
             }
         }
 
-        function preencherSeparadores(produtos) {
-            const select = document.getElementById('filtroSeparador');
-            select.innerHTML = '<option value="">Todos os Separadores</option>';
-            const separadores = [...new Set(produtos.map(p => p.separador).filter(Boolean))];
+        function preencherSelects(produtos) {
+            // Preenche Separadores
+            const selectSep = document.getElementById('filtroSeparador');
+            selectSep.innerHTML = '<option value="">Todos os Separadores</option>';
+            const separadores = [...new Set(produtos.map(p => p.separador).filter(s => s && s !== '-'))].sort();
             separadores.forEach(sep => {
                 const opt = document.createElement('option');
                 opt.value = sep;
                 opt.textContent = sep;
-                select.appendChild(opt);
+                selectSep.appendChild(opt);
+            });
+
+            // Preenche Fornecedores
+            const selectForn = document.getElementById('filtroFornecedor');
+            selectForn.innerHTML = '<option value="">Todos os Fornecedores</option>';
+            const fornecedores = [...new Set(produtos.map(p => p.fornecedor).filter(f => f && f !== 'NÃO INFORMADO'))].sort();
+            fornecedores.forEach(forn => {
+                const opt = document.createElement('option');
+                opt.value = forn;
+                opt.textContent = forn;
+                selectForn.appendChild(opt);
             });
         }
 
@@ -116,9 +136,9 @@
                     <div class="card-header">
                         <div class="card-title">${descricao}</div>
                         <div class="card-sub-info">
-                            <span>#${codigo}</span>
-                            <span class="font-medium text-gray-700">Sep: ${separador}</span>
-                            <span class="fornecedor-tag">🏢 ${fornecedor}</span>
+                            <span class="font-bold text-gray-700">#${codigo}</span>
+                            <span class="separador-tag">👤 Sep: ${separador}</span>
+                            <span class="fornecedor-tag">🏢 Forn: ${fornecedor}</span>
                         </div>
                     </div>
                     <div class="card-stats">
@@ -201,17 +221,19 @@
         function filtrar() {
             const texto = document.getElementById('filtroTexto').value.toLowerCase();
             const separador = document.getElementById('filtroSeparador').value;
+            const fornecedor = document.getElementById('filtroFornecedor').value;
 
             const filtrados = produtosGerais.filter(p => {
                 const cod = String(p.codigo || p.cod || '').toLowerCase();
                 const desc = String(p.descricao || p.desc || '').toLowerCase();
-                const forn = String(p.fornecedor || '').toLowerCase();
+                const forn = String(p.fornecedor || '');
                 const sep = String(p.separador || '');
 
-                const bateTexto = !texto || cod.includes(texto) || desc.includes(texto) || forn.includes(texto);
+                const bateTexto = !texto || cod.includes(texto) || desc.includes(texto);
                 const bateSeparador = !separador || sep === separador;
+                const bateFornecedor = !fornecedor || forn === fornecedor;
 
-                return bateTexto && bateSeparador;
+                return bateTexto && bateSeparador && bateFornecedor;
             });
 
             renderizarTabela(filtrados);
@@ -234,12 +256,13 @@
                 const reservado = parseFloat(card.getAttribute('data-reservado')) || 0;
                 const disponivel = parseFloat(card.getAttribute('data-disponivel')) || 0;
                 const separador = card.getAttribute('data-separador');
+                const fornecedor = card.getAttribute('data-fornecedor');
 
                 dadosAba1.push({
                     "Código": codigo,
-                    "Complemento": "",
                     "Descrição": descricao,
                     "Separador": separador,
+                    "Fornecedor": fornecedor,
                     "Estoque_Sistema": estoque,
                     "Reservado": reservado,
                     "Disponível_Sistema": disponivel
