@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, jsonify, request
 import logging
-from services.sankhya_service import buscar_dados_estoque_vendas
+from backend.services.sankhya_service import buscar_dados_estoque_vendas
 
 validades_bp = Blueprint('validades', __name__, template_folder='../frontend')
 
