@@ -209,6 +209,13 @@ def index():
     return app.send_static_file("index.html")
 
 
+@app.route("/validades")
+@login_required
+def validades_page():
+    """Renderiza a página frontend de consulta de validades"""
+    return app.send_static_file("validades.html")
+
+
 @app.route("/api/produtos", methods=["GET"])
 @login_required
 def get_produtos():
