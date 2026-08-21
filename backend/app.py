@@ -7,7 +7,7 @@ import pandas as pd
 from flask import Flask, jsonify, request, session, redirect, send_file, Response
 from dotenv import load_dotenv
 
-from validacoes_bp import validades_bp
+from validades_bp import validades_bp
 from services.sankhya_service import buscar_dados_estoque_vendas
 
 # WebAuthn
