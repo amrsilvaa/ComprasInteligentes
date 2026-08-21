@@ -7,11 +7,11 @@ import pandas as pd
 from flask import Flask, jsonify, request, session, redirect, send_file, Response
 from dotenv import load_dotenv
 
-# IMPORT CORRIGIDO (o nome do arquivo é validacoes_bp, o Blueprint é validades_bp)
-from validacoes_bp import validades_bp
+# Import correto do Blueprint
+from .validacoes_bp import validades_bp
 from services.sankhya_service import buscar_dados_estoque_vendas
 
-# WebAuthn
+# WebAuthn / Passkeys
 from webauthn import (
     generate_registration_options,
     verify_registration_response,
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder="../frontend", template_folder="../frontend")
 app.secret_key = os.getenv("SECRET_KEY", "chave-secreta-sankhya-compras-2026")
 
-# Blueprint
+# Registra o Blueprint de validades
 app.register_blueprint(validades_bp)
 
 ADMIN_USER = os.getenv("APP_USER", "admin")
@@ -59,8 +59,11 @@ def load_credentials():
 
 
 def save_credentials(data):
-    with open(CREDENTIALS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    try:
+        with open(CREDENTIALS_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.error(f"Erro ao salvar credenciais: {e}")
 
 
 db_credentials = load_credentials()
@@ -109,7 +112,7 @@ def logout():
     return redirect("/login")
 
 
-# --- WEBAUTHN ---
+# --- WEBAUTHN / FACE ID ---
 @app.route("/api/webauthn/register-options", methods=["GET"])
 @login_required
 def webauthn_register_options():
@@ -137,11 +140,12 @@ def webauthn_register_verify():
         return jsonify({"error": "Desafio expirado"}), 400
     body = request.json
     try:
+        origin = request.headers.get("Origin") or f"https://{RP_ID}"
         verification = verify_registration_response(
             credential=body,
             expected_challenge=bytes.fromhex(challenge_hex),
             expected_rp_id=RP_ID,
-            expected_origin=request.origin or f"https://{request.host}",
+            expected_origin=origin,
         )
         username = session.get("user", ADMIN_USER)
         db_credentials[username] = {
@@ -188,11 +192,12 @@ def webauthn_login_verify():
         return jsonify({"error": "Credencial não encontrada"}), 400
 
     try:
+        origin = request.headers.get("Origin") or f"https://{RP_ID}"
         verification = verify_authentication_response(
             credential=body,
             expected_challenge=bytes.fromhex(challenge_hex),
             expected_rp_id=RP_ID,
-            expected_origin=request.origin or f"https://{request.host}",
+            expected_origin=origin,
             credential_public_key=bytes.fromhex(target_cred["public_key"]),
             credential_current_sign_count=target_cred["sign_count"],
         )
@@ -202,7 +207,7 @@ def webauthn_login_verify():
         return jsonify({"error": str(e)}), 400
 
 
-# --- ROTAS PRINCIPAIS ---
+# --- ROTAS PRINCIPAIS DA API ---
 @app.route("/")
 @login_required
 def index():
@@ -212,9 +217,9 @@ def index():
 @app.route("/api/produtos", methods=["GET"])
 @login_required
 def get_produtos():
-    """Rota unificada para buscar produtos do Sankhya"""
+    """Rota principal com suporte ao formato do index.html"""
     try:
-        dados = buscar_dados_estoque_vendas()
+        dados = buscar_dados_estoque_vendas() or []
         return jsonify({"sucesso": True, "produtos": dados})
     except Exception as e:
         logger.error(f"Erro na rota /api/produtos: {str(e)}")
@@ -224,8 +229,13 @@ def get_produtos():
 @app.route("/api/estoque", methods=["GET"])
 @login_required
 def get_estoque():
-    """Alias para /api/produtos (mantido para compatibilidade)"""
-    return get_produtos()
+    """Rota para compatibilidade com script.js"""
+    try:
+        dados = buscar_dados_estoque_vendas() or []
+        return jsonify(dados)
+    except Exception as e:
+        logger.error(f"Erro na rota /api/estoque: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/estoque/exportar-excel", methods=["GET"])

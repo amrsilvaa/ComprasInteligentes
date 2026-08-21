@@ -8,32 +8,81 @@
   
   <style>
     .btn-cadastro-face { font-size: 11px; white-space: nowrap; }
-    @media (max-width: 767px) { #tabelaContainer { display: none !important; } #cardsContainer { display: block !important; } }
-    @media (min-width: 768px) { #tabelaContainer { display: block !important; } #cardsContainer { display: none !important; } }
-    
+    @media (max-width: 767px) {
+      #tabelaContainer { display: none !important; }
+      #cardsContainer { display: block !important; }
+    }
+    @media (min-width: 768px) {
+      #tabelaContainer { display: block !important; }
+      #cardsContainer { display: none !important; }
+    }
     .filtro-fornecedor-container { position: relative; display: inline-block; }
-    .filtro-fornecedor-dropdown { display: none; position: absolute; top: 100%; left: 0; background: white; min-width: 300px; max-height: 300px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); z-index: 50; padding: 8px; }
+    .filtro-fornecedor-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      background: white;
+      min-width: 300px;
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+      z-index: 50;
+      padding: 8px;
+    }
     .filtro-fornecedor-dropdown.active { display: block; }
-    .filtro-fornecedor-dropdown input { width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; margin-bottom: 8px; }
-    .filtro-fornecedor-dropdown label { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 13px; cursor: pointer; border-radius: 4px; }
+    .filtro-fornecedor-dropdown input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .filtro-fornecedor-dropdown label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 8px;
+      font-size: 13px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
     .filtro-fornecedor-dropdown label:hover { background: #f3f4f6; }
-    .filtro-fornecedor-dropdown .btn-limpar { display: block; width: 100%; padding: 6px; background: #ef4444; color: white; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; margin-top: 4px; }
-    .filtro-fornecedor-dropdown .btn-limpar:hover { background: #dc2626; }
+    .filtro-fornecedor-dropdown .btn-limpar {
+      display: block;
+      width: 100%;
+      padding: 6px;
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      margin-top: 4px;
+    }
   </style>
 </head>
 <body class="bg-gray-100 p-4 md:p-6 min-h-screen pb-24">
   <div class="max-w-[98%] mx-auto">
+    
+    <!-- Cabeçalho & Filtros -->
     <div class="bg-white p-4 rounded-xl shadow-md mb-6 sticky top-0 z-20 border-b border-gray-200">
       <div class="flex flex-col md:flex-row justify-between items-center gap-3 mb-4">
         <div>
           <h1 class="text-xl md:text-2xl font-bold text-gray-800">Sugestão de Compras (Giro 15 Dias)</h1>
           <p class="text-xs text-gray-500">Clique no título das colunas para ordenar</p>
         </div>
-        <!-- ALTERAÇÃO 1: Flexbox centralizado para as buscas -->
+        
         <div class="flex flex-wrap gap-2 w-full md:w-auto justify-center">
           <input type="text" id="searchInput" placeholder="Buscar por código ou descrição..." class="border border-gray-300 rounded-lg px-4 py-2 w-full md:w-60 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+          
           <div class="filtro-fornecedor-container">
-            <button id="btnFiltroFornecedor" onclick="toggleFiltroFornecedor()" class="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-700 font-bold text-sm flex items-center gap-1">⋮ <span id="filtroFornecedorLabel">Fornecedor</span></button>
+            <button id="btnFiltroFornecedor" onclick="toggleFiltroFornecedor()" class="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-700 font-bold text-sm flex items-center gap-1">
+              ⋮ <span id="filtroFornecedorLabel">Fornecedor</span>
+            </button>
             <div id="filtroFornecedorDropdown" class="filtro-fornecedor-dropdown">
               <input type="text" id="filtroFornecedorBusca" placeholder="Buscar fornecedor..." oninput="filtrarOpcoesFornecedor()">
               <div id="listaFornecedores"></div>
@@ -42,8 +91,10 @@
           </div>
         </div>
       </div>
+
       <div class="flex flex-wrap gap-2 justify-between items-center">
         <div class="flex flex-wrap gap-2">
+          <a href="/validades" class="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow-sm">📦 Coleta de Validades</a>
           <a href="/api/estoque/exportar-excel?apenas_repor=true" class="px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg shadow-sm">📊 Baixar Apenas "REPOR" (.xlsx)</a>
           <a href="/api/estoque/exportar-excel?apenas_repor=false" class="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white text-xs font-bold rounded-lg shadow-sm">📁 Baixar Tudo (.xlsx)</a>
         </div>
@@ -53,8 +104,11 @@
         </div>
       </div>
     </div>
+
+    <!-- Conteúdo -->
     <div id="conteudoProdutos" class="grid grid-cols-1 gap-4">
       <div id="cardsContainer" class="col-span-full text-center text-gray-500 text-sm py-10">Carregando produtos do Sankhya...</div>
+      
       <div id="tabelaContainer" class="col-span-full bg-white rounded-xl shadow-md overflow-x-auto border border-gray-200">
         <table class="w-full text-left text-xs">
           <thead class="bg-gray-800 text-white uppercase tracking-wider">
@@ -77,6 +131,7 @@
       </div>
     </div>
   </div>
+
   <script>
     let todosProdutos = [];
     let ordemAtual = { coluna: '', ascendente: true };
@@ -151,17 +206,19 @@
     function renderizarConteudo(produtos) {
       const cardsContainer = document.getElementById('cardsContainer');
       const tableBody = document.getElementById('tableBody');
+      
       if (produtos.length === 0) {
         cardsContainer.innerHTML = '<p class="col-span-full text-center text-gray-500">Nenhum produto encontrado.</p>';
         tableBody.innerHTML = '<tr><td colspan="11" class="p-6 text-center text-gray-500">Nenhum produto encontrado.</td></tr>';
         return;
       }
+
       cardsContainer.innerHTML = produtos.map(p => {
         const codigo = p.codigo || '-';
-        const descricao = p.descricao || '-';
+        const descricao = p.descricao || p.produto || '-';
         const fornecedor = p.fornecedor || '';
         const estoque = Number(p.estoque || 0);
-        const vendas15d = Number(p.vendas_15d || 0);
+        const vendas15d = Number(p.vendas_15d || p.vendas_mes || 0);
         const sugestao = Number(p.sugestao_compra || 0);
         const precisaComprar = sugestao > 0;
         return `<div class="bg-white p-4 rounded-xl shadow-sm border-l-4 ${precisaComprar ? 'border-red-500 bg-red-50' : 'border-green-500'} flex flex-col gap-2">
@@ -176,11 +233,11 @@
       
       tableBody.innerHTML = produtos.map(p => {
         const codigo = p.codigo || '-';
-        const descricao = p.descricao || '-';
+        const descricao = p.descricao || p.produto || '-';
         const unidade = p.unidade || 'CX';
         const estoque = Number(p.estoque || 0);
         const estMin = Number(p.estoque_minimo || 0);
-        const vendas15d = Number(p.vendas_15d || 0);
+        const vendas15d = Number(p.vendas_15d || p.vendas_mes || 0);
         const vendasMesAnt = Number(p.vendas_mes_ant || 0);
         const custoUn = Number(p.custo_un || 0);
         const precoVenda = Number(p.preco_venda || 0);
@@ -188,7 +245,7 @@
         const precisaComprar = sugestao > 0;
         return `<tr class="hover:bg-blue-50 transition-colors ${precisaComprar ? 'bg-red-50' : ''}">
           <td class="p-3 font-mono text-center text-gray-600">${codigo}</td>
-          <td class="p-3 font-medium text-gray-900" title="${fornecedor}">${descricao}</td>
+          <td class="p-3 font-medium text-gray-900" title="${p.fornecedor || ''}">${descricao}</td>
           <td class="p-3 text-center text-gray-500">${unidade}</td>
           <td class="p-3 text-right font-semibold text-gray-800">${formatarNumero(estoque)}</td>
           <td class="p-3 text-right text-gray-500">${formatarNumero(estMin)}</td>
@@ -205,7 +262,7 @@
     function filtrarProdutos() {
       const termo = document.getElementById('searchInput').value.toLowerCase();
       return todosProdutos.filter(p => {
-        const desc = String(p.descricao || '').toLowerCase();
+        const desc = String(p.descricao || p.produto || '').toLowerCase();
         const cod = String(p.codigo || '').toLowerCase();
         const forn = String(p.fornecedor || '').toLowerCase();
         const matchBusca = desc.includes(termo) || cod.includes(termo);
