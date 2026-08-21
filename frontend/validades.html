@@ -13,14 +13,13 @@
         .input-group input, .input-group select { flex: 1; padding: 12px 14px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 14px; background: #fff; outline: none; min-width: 0; }
         .btn-excel { background-color: #16a34a; color: white; border: none; padding: 14px; border-radius: 10px; font-size: 15px; font-weight: bold; width: 100%; cursor: pointer; box-shadow: 0 4px 6px rgba(22, 163, 74, 0.3); display: flex; align-items: center; justify-content: center; gap: 8px; }
         .btn-excel:active { transform: scale(0.98); background-color: #15803d; }
-        .btn-voltar { font-size: 13px; color: #2563eb; text-decoration: none; font-weight: 600; }
         .cards-wrapper { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 10px; }
         @media (min-width: 768px) { .cards-wrapper { grid-template-columns: 1fr 1fr; } }
         .product-card { background: #ffffff; border-radius: 16px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 5px solid #e5e7eb; display: flex; flex-direction: column; gap: 12px; }
-        .card-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #f3f4f6; padding-bottom: 8px; flex-direction: column; gap: 2px; }
-        .card-title { font-weight: 700; font-size: 15px; flex: 1; width: 100%; }
-        .card-sub-info { display: flex; justify-content: space-between; width: 100%; font-size: 12px; color: #6b7280; flex-wrap: wrap; gap: 4px; }
-        .card-sub-info .fornecedor { color: #16a34a; font-weight: 600; font-size: 11px; }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #f3f4f6; padding-bottom: 8px; flex-direction: column; gap: 4px; }
+        .card-title { font-weight: 700; font-size: 15px; flex: 1; width: 100%; color: #111827; }
+        .card-sub-info { display: flex; justify-content: space-between; align-items: center; width: 100%; font-size: 12px; color: #6b7280; flex-wrap: wrap; gap: 6px; }
+        .card-sub-info .fornecedor-tag { background: #e8f5e9; color: #16a34a; font-weight: 700; font-size: 11px; padding: 3px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; text-transform: uppercase; }
         .card-stats { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; background: #f8fafc; padding: 8px 12px; border-radius: 10px; }
         .stat-item { display: flex; align-items: center; gap: 4px; }
         .stat-val { font-weight: 700; color: #2563eb; }
@@ -44,13 +43,12 @@
     <div class="top-bar">
         <h1>
             <span>📦 Coleta de Validades</span>
-            <a href="/" class="btn-voltar">← Voltar ao Painel</a>
         </h1>
         <div class="input-group">
             <input type="text" id="searchInput" placeholder="Buscar por código, descrição ou fornecedor..." onkeyup="filtrarTabela()">
-            <select id="selectSeparador" onchange="filtrarTabela()"><option value="">Todos</option></select>
+            <select id="selectSeparador" onchange="filtrarTabela()"><option value="">Todos os Separadores</option></select>
         </div>
-        <button class="btn-excel" onclick="exportarExcel()">⬇️ Baixar Excel</button>
+        <button class="btn-excel" onclick="exportarExcel()">📊 Baixar Excel com 2 Abas</button>
     </div>
     
     <div id="tabelaCorpo" class="cards-wrapper"></div>
@@ -74,7 +72,7 @@
         function popularSelectSeparadores(produtos) {
             const select = document.getElementById('selectSeparador');
             const separadores = [...new Set(produtos.map(p => p.separador).filter(s => s && s !== '-'))].sort();
-            select.innerHTML = '<option value="">Todos</option>';
+            select.innerHTML = '<option value="">Todos os Separadores</option>';
             separadores.forEach(sep => { 
                 const option = document.createElement('option'); 
                 option.value = sep; 
@@ -92,13 +90,15 @@
             container.innerHTML = '';
             produtos.forEach((item, index) => {
                 const estoque = Number(item.estoque || 0);
-                const reservado = Number(item.reservado || 0);
+                const reservado = Number(item.reservado || item.separado || 0);
                 const disponivel = Math.max(0, estoque - reservado);
                 const separador = item.separador || '-';
-                const fornecedor = item.fornecedor || '';
+                const fornecedor = item.fornecedor || 'NÃO INFORMADO';
 
                 const card = document.createElement('div');
                 card.className = 'product-card';
+                card.setAttribute('data-codigo', item.codigo || '');
+                card.setAttribute('data-descricao', item.descricao || '');
                 card.setAttribute('data-estoque', estoque);
                 card.setAttribute('data-reservado', reservado);
                 card.setAttribute('data-disponivel', disponivel);
@@ -110,8 +110,8 @@
                         <div class="card-title">${item.descricao || '-'}</div>
                         <div class="card-sub-info">
                             <span>#${item.codigo || '-'}</span>
-                            <span class="font-medium text-gray-700">${separador}</span>
-                            ${fornecedor ? '<span class="fornecedor">🏢 ' + fornecedor + '</span>' : ''}
+                            <span class="font-medium text-gray-700">Sep: ${separador}</span>
+                            <span class="fornecedor-tag">🏢 ${fornecedor}</span>
                         </div>
                     </div>
                     <div class="card-stats">
@@ -202,64 +202,79 @@
         }
 
         function exportarExcel() {
-            fetch('/api/validades').then(res => res.json()).then(novosDados => {
-                todosProdutos = novosDados.data || novosDados;
-                const cards = document.querySelectorAll('.product-card');
-                let dadosExport = [], maxLotes = 0;
+            if (todosProdutos.length === 0) return alert("Não há dados para exportar.");
 
-                cards.forEach(card => {
-                    const cod = (card.querySelector('.card-sub-info span:first-child')?.innerText || '').replace('#', '');
-                    const desc = card.querySelector('.card-title')?.innerText || '';
-                    const fornecedor = card.getAttribute('data-fornecedor') || '';
-                    const estoque = Number(card.getAttribute('data-estoque') || 0);
-                    const reservado = Number(card.getAttribute('data-reservado') || 0);
-                    const disponivel = Number(card.getAttribute('data-disponivel') || 0);
+            const wb = XLSX.utils.book_new();
 
-                    let lotes = [], totalColetado = 0;
-                    card.querySelectorAll('.lote-row').forEach(row => {
-                        const qtd = row.querySelector('.input-qtd').value;
-                        let data = row.querySelector('.input-val').value;
-                        if (data) { 
-                            const p = data.split('-'); 
-                            data = p[2] + '/' + p[1] + '/' + p[0]; 
-                        }
-                        if (qtd || data) {
-                            lotes.push({ qtd: qtd || '', data: data || '' });
-                            if (qtd) totalColetado += Number(qtd);
-                        }
-                    });
+            // --- PLANILHA 1: Dados do Estoque (Código, Descrição, Fornecedor, Estoque Total, Reservado, Disponível) ---
+            const cabecalhoEstoque = ['Código', 'Descrição', 'Fornecedor', 'Estoque Total', 'Reservado', 'Disponível'];
+            const linhasEstoque = todosProdutos.map(item => [
+                item.codigo || '',
+                item.descricao || '',
+                item.fornecedor || 'NÃO INFORMADO',
+                Number(item.estoque || 0),
+                Number(item.reservado || item.separado || 0),
+                Math.max(0, Number(item.estoque || 0) - Number(item.reservado || item.separado || 0))
+            ]);
+            const wsEstoque = XLSX.utils.aoa_to_sheet([cabecalhoEstoque, ...linhasEstoque]);
+            wsEstoque['!cols'] = cabecalhoEstoque.map(() => ({ wch: 22 }));
+            XLSX.utils.book_append_sheet(wb, wsEstoque, "Dados do Estoque");
 
-                    if (lotes.length > 0) {
-                        if (lotes.length > maxLotes) maxLotes = lotes.length;
-                        const divergencia = totalColetado - estoque;
-                        dadosExport.push({ cod, desc, fornecedor, estoque, reservado, disponivel, totalColetado, divergencia, lotes });
+            // --- PLANILHA 2: Coleta e Lotes (Total Coletado, Divergência, Lote 1 - Qtd, Lote 1 - Data, Lote 2 - Qtd...) ---
+            const cards = document.querySelectorAll('.product-card');
+            let dadosColeta = [], maxLotes = 1;
+
+            cards.forEach(card => {
+                const cod = card.getAttribute('data-codigo');
+                const desc = card.getAttribute('data-descricao');
+                const estoque = Number(card.getAttribute('data-estoque') || 0);
+
+                let lotes = [], totalColetado = 0;
+                card.querySelectorAll('.lote-row').forEach(row => {
+                    const qtd = row.querySelector('.input-qtd').value;
+                    let data = row.querySelector('.input-val').value;
+                    if (data) { 
+                        const p = data.split('-'); 
+                        data = p[2] + '/' + p[1] + '/' + p[0]; 
+                    }
+                    if (qtd || data) {
+                        lotes.push({ qtd: qtd || '', data: data || '' });
+                        if (qtd) totalColetado += Number(qtd);
                     }
                 });
 
-                if (dadosExport.length === 0) return alert("Nenhum produto preenchido.");
-
-                let cabecalho = ['Código', 'Descrição', 'Fornecedor', 'Estoque Total', 'Reservado', 'Disponível', 'Total Coletado', 'Divergência'];
-                for (let i = 1; i <= maxLotes; i++) { cabecalho.push('Lote ' + i + ' - Qtd', 'Lote ' + i + ' - Data'); }
-
-                let linhas = [];
-                dadosExport.forEach(item => {
-                    let linha = [item.cod, item.desc, item.fornecedor, item.estoque, item.reservado, item.disponivel, item.totalColetado, item.divergencia];
-                    for (let i = 0; i < maxLotes; i++) { linha.push(item.lotes[i]?.qtd || '', item.lotes[i]?.data || ''); }
-                    linhas.push(linha);
-                });
-
-                const wb = XLSX.utils.book_new();
-                const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
-                ws['!cols'] = cabecalho.map(() => ({ wch: 18 }));
-                XLSX.utils.book_append_sheet(wb, ws, "Coleta");
-
-                const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-                const blob = new Blob([wbout], { type: 'application/octet-stream' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = 'coleta_validades.xlsx';
-                link.click();
+                if (lotes.length > 0) {
+                    if (lotes.length > maxLotes) maxLotes = lotes.length;
+                    const divergencia = totalColetado - estoque;
+                    dadosColeta.push({ cod, desc, totalColetado, divergencia, lotes });
+                }
             });
+
+            let cabecalhoColeta = ['Código', 'Descrição', 'Total Coletado', 'Divergência'];
+            for (let i = 1; i <= maxLotes; i++) { 
+                cabecalhoColeta.push('Lote ' + i + ' - Qtd', 'Lote ' + i + ' - Data'); 
+            }
+
+            let linhasColeta = [];
+            dadosColeta.forEach(item => {
+                let linha = [item.cod, item.desc, item.totalColetado, item.divergencia];
+                for (let i = 0; i < maxLotes; i++) { 
+                    linha.push(item.lotes[i]?.qtd || '', item.lotes[i]?.data || ''); 
+                }
+                linhasColeta.push(linha);
+            });
+
+            const wsColeta = XLSX.utils.aoa_to_sheet([cabecalhoColeta, ...linhasColeta]);
+            wsColeta['!cols'] = cabecalhoColeta.map(() => ({ wch: 18 }));
+            XLSX.utils.book_append_sheet(wb, wsColeta, "Coleta e Lotes");
+
+            // --- BAIXAR O ARQUIVO EXCEL ---
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/octet-stream' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'coleta_validades_completo.xlsx';
+            link.click();
         }
 
         document.addEventListener('DOMContentLoaded', carregarDados);

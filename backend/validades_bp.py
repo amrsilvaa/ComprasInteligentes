@@ -1,59 +1,95 @@
-from flask import Blueprint, render_template, jsonify, request
-import logging
-from backend.services.sankhya_service import buscar_dados_estoque_vendas
+from flask import Blueprint, jsonify, request, Response
+from backend.services.excel_service import gerar_excel_validades
 
-validades_bp = Blueprint('validades', __name__, template_folder='../frontend')
+validades_bp = Blueprint('validades_bp', __name__)
 
-@validades_bp.route('/validades')
-def pagina_validades():
-    return render_template('validades.html')
+# Exemplo de mock de dados ou integração com banco/ERP
+# Substitua pela sua consulta real ao banco de dados se necessário
+PRODUTOS_MOCK = [
+    {
+        "cod": "1001",
+        "ean": "7898080000012",
+        "complemento": "CX C/ 24",
+        "desc": "PRODUTO EXEMPLO A",
+        "separador": "JOAO",
+        "fornecedor": "FORNECEDOR ALFA",
+        "estoque": 100.0,
+        "reservado": 10.0,
+        "disponivel": 90.0,
+        "coletas": [
+            {"qtd": 50, "data": "2026-10-15"},
+            {"qtd": 40, "data": "2026-12-01"}
+        ]
+    },
+    {
+        "cod": "1002",
+        "ean": "7898080000029",
+        "complemento": "UNIDADE",
+        "desc": "PRODUTO EXEMPLO B",
+        "separador": "MARIA",
+        "fornecedor": "FORNECEDOR BETA",
+        "estoque": 50.0,
+        "reservado": 5.0,
+        "disponivel": 45.0,
+        "coletas": []
+    }
+]
+
 
 @validades_bp.route('/api/validades', methods=['GET'])
-def get_validades():
+def listar_validades():
+    """
+    Retorna a lista de produtos para a tela frontend (JSON).
+    Suporta busca por termo ou separador.
+    """
     try:
-        registros = buscar_dados_estoque_vendas() or []
-        produtos_formatados = []
-        for row in registros:
-            if not isinstance(row, dict):
-                continue
-            
-            separador_val = str(row.get('separador') or '-').strip()
-            if not separador_val or separador_val.upper() in ['NONE', 'NULL', '']:
-                separador_val = '-'
-            
-            complemento_val = str(row.get('complemento') or '-').strip()
-            if not complemento_val or complemento_val.upper() in ['NONE', 'NULL', '']:
-                complemento_val = '-'
-            
-            ean_val = str(row.get('ean') or '-').strip()
-            if not ean_val or ean_val.upper() in ['NONE', 'NULL', '']:
-                ean_val = '-'
-            
-            fornecedor_val = str(row.get('fornecedor') or '').strip()
-            if not fornecedor_val or fornecedor_val.upper() in ['NONE', 'NULL', '']:
-                fornecedor_val = ''
+        busca = request.args.get('busca', '').lower().strip()
+        separador = request.args.get('separador', '').strip()
 
-            produtos_formatados.append({
-                "codigo": str(row.get('codigo') or '0'),
-                "ean": ean_val,
-                "complemento": complemento_val,
-                "descricao": str(row.get('descricao') or row.get('produto') or '').strip(),
-                "separador": separador_val,
-                "fornecedor": fornecedor_val,
-                "estoque": float(row.get('estoque') or 0.0),
-                "reservado": float(row.get('reservado') or row.get('separado') or 0.0)
-            })
+        produtos_filtrados = PRODUTOS_MOCK
 
-        return jsonify({
-            "status": "success",
-            "total": len(produtos_formatados),
-            "data": produtos_formatados
-        }), 200
+        if busca:
+            produtos_filtrados = [
+                p for p in produtos_filtrados
+                if busca in str(p.get('cod', '')).lower()
+                or busca in str(p.get('desc', '')).lower()
+                or busca in str(p.get('fornecedor', '')).lower()
+                or busca in str(p.get('ean', '')).lower()
+            ]
+
+        if separador:
+            produtos_filtrados = [
+                p for p in produtos_filtrados
+                if p.get('separador') == separador
+            ]
+
+        return jsonify({"status": "sucesso", "data": produtos_filtrados}), 200
 
     except Exception as e:
-        logging.error(f"Erro ao buscar validades: {str(e)}")
-        return jsonify({
-            "status": "error",
-            "message": "Erro ao carregar dados de validades.",
-            "details": str(e)
-        }), 500
+        return jsonify({"status": "erro", "mensagem": str(e)}), 500
+
+
+@validades_bp.route('/api/validades/excel', methods=['POST', 'GET'])
+def download_excel_validades():
+    """
+    Gera e envia o arquivo Excel com 2 abas (Dados do Estoque e Coleta/Lotes).
+    Aceita payload JSON no POST ou usa a lista completa no GET.
+    """
+    try:
+        if request.method == 'POST' and request.is_json:
+            dados = request.get_json()
+            produtos = dados.get('produtos', PRODUTOS_MOCK)
+        else:
+            produtos = PRODUTOS_MOCK
+
+        excel_bytes = gerar_excel_validades(produtos)
+
+        return Response(
+            excel_bytes,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": "attachment; filename=coleta_validades_completo.xlsx"
+            }
+        )
+    except Exception as e:
+        return jsonify({"status": "erro", "mensagem": str(e)}), 500
