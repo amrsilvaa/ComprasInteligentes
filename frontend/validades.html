@@ -39,17 +39,14 @@
         </button>
     </div>
 
-    <!-- FILTROS (3 COLUNAS: TEXTO, SEPARADOR E FORNECEDOR) -->
+    <!-- FILTROS -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <!-- BUSCA GERAL -->
         <input type="text" id="filtroTexto" onkeyup="filtrar()" placeholder="Buscar por código, descrição..." class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
         
-        <!-- FILTRO DE SEPARADOR -->
         <select id="filtroSeparador" onchange="filtrar()" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
             <option value="">Todos os Separadores</option>
         </select>
 
-        <!-- FILTRO DE FORNECEDOR -->
         <select id="filtroFornecedor" onchange="filtrar()" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white">
             <option value="">Todos os Fornecedores</option>
         </select>
@@ -81,7 +78,6 @@
         }
 
         function preencherSelects(produtos) {
-            // Preenche Separadores
             const selectSep = document.getElementById('filtroSeparador');
             selectSep.innerHTML = '<option value="">Todos os Separadores</option>';
             const separadores = [...new Set(produtos.map(p => p.separador).filter(s => s && s !== '-'))].sort();
@@ -92,7 +88,6 @@
                 selectSep.appendChild(opt);
             });
 
-            // Preenche Fornecedores
             const selectForn = document.getElementById('filtroFornecedor');
             selectForn.innerHTML = '<option value="">Todos os Fornecedores</option>';
             const fornecedores = [...new Set(produtos.map(p => p.fornecedor).filter(f => f && f !== 'NÃO INFORMADO'))].sort();
@@ -258,6 +253,7 @@
                 const separador = card.getAttribute('data-separador');
                 const fornecedor = card.getAttribute('data-fornecedor');
 
+                // ABA 1: Todos os dados do Estoque
                 dadosAba1.push({
                     "Código": codigo,
                     "Descrição": descricao,
@@ -268,6 +264,7 @@
                     "Disponível_Sistema": disponivel
                 });
 
+                // ABA 2: Apenas produtos que tiveram alguma COLETA preenchida
                 const loteRows = card.querySelectorAll('.lote-row');
                 const coletas = [];
                 let totalColetado = 0;
@@ -281,25 +278,32 @@
                     }
                 });
 
-                const divergencia = totalColetado - estoque;
+                // Só adiciona na Aba 2 se houver pelo menos 1 lote preenchido
+                if (coletas.length > 0) {
+                    const divergencia = totalColetado - estoque;
 
-                dadosAba2.push({
-                    "Código": codigo,
-                    "Descrição": descricao,
-                    "Total_Coletado": totalColetado,
-                    "Divergência": divergencia,
-                    "Qtd_1": coletas[0] ? coletas[0].qtd : "",
-                    "Data_1": coletas[0] ? coletas[0].data : "",
-                    "Qtd_2": coletas[1] ? coletas[1].qtd : "",
-                    "Data_2": coletas[1] ? coletas[1].data : "",
-                    "Qtd_3": coletas[2] ? coletas[2].qtd : "",
-                    "Data_3": coletas[2] ? coletas[2].data : ""
-                });
+                    dadosAba2.push({
+                        "Código": codigo,
+                        "Descrição": descricao,
+                        "Total_Coletado": totalColetado,
+                        "Divergência": divergencia,
+                        "Qtd_1": coletas[0] ? coletas[0].qtd : "",
+                        "Data_1": coletas[0] ? coletas[0].data : "",
+                        "Qtd_2": coletas[1] ? coletas[1].qtd : "",
+                        "Data_2": coletas[1] ? coletas[1].data : "",
+                        "Qtd_3": coletas[2] ? coletas[2].qtd : "",
+                        "Data_3": coletas[2] ? coletas[2].data : ""
+                    });
+                }
             });
+
+            if (dadosAba2.length === 0) {
+                alert('Atenção: Nenhum produto teve lote/validade preenchido para a Aba 2.');
+            }
 
             const wb = XLSX.utils.book_new();
             const ws1 = XLSX.utils.json_to_sheet(dadosAba1);
-            const ws2 = XLSX.utils.json_to_sheet(dadosAba2);
+            const ws2 = XLSX.utils.json_to_sheet(dadosAba2.length > 0 ? dadosAba2 : [{"Aviso": "Nenhuma coleta preenchida"}]);
 
             XLSX.utils.book_append_sheet(wb, ws1, "Dados do Estoque");
             XLSX.utils.book_append_sheet(wb, ws2, "Coleta e Lotes");
