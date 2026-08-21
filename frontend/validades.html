@@ -197,7 +197,7 @@
             let totalColetado = 0;
             qtdInputs.forEach(inp => {
                 const val = parseFloat(inp.value);
-                if (!isNaN(val)) totalColetado += val;
+                if (!isNaN(val) && val > 0) totalColetado += val;
             });
 
             const divergencia = totalColetado - estoque;
@@ -237,7 +237,7 @@
         function exportarParaExcel() {
             const cards = document.querySelectorAll('.product-card');
             if (cards.length === 0) {
-                alert('Não há produtos para exportar.');
+                alert('Não há produtos na tela para exportar.');
                 return;
             }
 
@@ -253,7 +253,7 @@
                 const separador = card.getAttribute('data-separador');
                 const fornecedor = card.getAttribute('data-fornecedor');
 
-                // ABA 1: Todos os dados do Estoque
+                // ABA 1: Visão Geral de Todos os Produtos do Estoque
                 dadosAba1.push({
                     "Código": codigo,
                     "Descrição": descricao,
@@ -264,22 +264,27 @@
                     "Disponível_Sistema": disponivel
                 });
 
-                // ABA 2: Apenas produtos que tiveram alguma COLETA preenchida
+                // ABA 2: SOMENTE produtos onde foi coletado pelo menos 1 lote (Quantidade > 0 OU Data preenchida)
                 const loteRows = card.querySelectorAll('.lote-row');
-                const coletas = [];
+                const coletasValidas = [];
                 let totalColetado = 0;
 
                 loteRows.forEach(row => {
-                    const qtd = parseFloat(row.querySelector('.input-qtd').value) || 0;
-                    const data = row.querySelector('.input-val').value || "";
+                    const qtdInput = row.querySelector('.input-qtd');
+                    const dataInput = row.querySelector('.input-val');
+                    
+                    const qtd = parseFloat(qtdInput ? qtdInput.value : 0) || 0;
+                    const data = dataInput ? dataInput.value.trim() : "";
+
+                    // REGRA RÍGIDA: Só considera como lote coletado se houver quantidade > 0 OU data preenchida
                     if (qtd > 0 || data !== "") {
-                        coletas.push({ qtd, data });
+                        coletasValidas.push({ qtd, data });
                         totalColetado += qtd;
                     }
                 });
 
-                // Só adiciona na Aba 2 se houver pelo menos 1 lote preenchido
-                if (coletas.length > 0) {
+                // Inclui na Aba 2 APENAS se houver ao menos 1 lote válido capturado
+                if (coletasValidas.length > 0) {
                     const divergencia = totalColetado - estoque;
 
                     dadosAba2.push({
@@ -287,18 +292,18 @@
                         "Descrição": descricao,
                         "Total_Coletado": totalColetado,
                         "Divergência": divergencia,
-                        "Qtd_1": coletas[0] ? coletas[0].qtd : "",
-                        "Data_1": coletas[0] ? coletas[0].data : "",
-                        "Qtd_2": coletas[1] ? coletas[1].qtd : "",
-                        "Data_2": coletas[1] ? coletas[1].data : "",
-                        "Qtd_3": coletas[2] ? coletas[2].qtd : "",
-                        "Data_3": coletas[2] ? coletas[2].data : ""
+                        "Qtd_1": coletasValidas[0] ? coletasValidas[0].qtd : "",
+                        "Data_1": coletasValidas[0] ? coletasValidas[0].data : "",
+                        "Qtd_2": coletasValidas[1] ? coletasValidas[1].qtd : "",
+                        "Data_2": coletasValidas[1] ? coletasValidas[1].data : "",
+                        "Qtd_3": coletasValidas[2] ? coletasValidas[2].qtd : "",
+                        "Data_3": coletasValidas[2] ? coletasValidas[2].data : ""
                     });
                 }
             });
 
             if (dadosAba2.length === 0) {
-                alert('Atenção: Nenhum produto teve lote/validade preenchido para a Aba 2.');
+                alert('Aviso: Nenhum lote/validade foi digitado nos campos. A Aba 2 estará vazia.');
             }
 
             const wb = XLSX.utils.book_new();
